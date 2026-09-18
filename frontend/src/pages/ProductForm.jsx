@@ -1,0 +1,354 @@
+import { useMemo, useRef, useState } from "react";
+import { ScanLine, Wand2, Plus, Trash2, Camera, EyeOff, Eye, ImageOff } from "lucide-react";
+import { useApp } from "../store";
+import { api } from "../lib/api";
+import { goBack, useRoute } from "../lib/router";
+import { imageUrl } from "../lib/catalog";
+import { compressImage } from "../lib/files";
+import { beepOk } from "../lib/feedback";
+import TopBar from "../components/TopBar";
+import CameraScanner from "../components/CameraScanner";
+import { Button, Chips, Field, MoneyInput, Seg, useConfirm } from "../components/ui";
+
+const GST = [0, 5, 12, 18, 28];
+const blankVariant = (barcode = "") => ({ id: 0, size_label: "", size_ml: "", barcode, mrp: "", sell_price: "", cost: "", opening_stock: "", reorder_level: "3", active: 1 });
+
+export default function ProductForm({ id }) {
+  const { rawCatalog, catalog, refreshCatalog, toast, isManager, isAdmin } = useApp();
+  const route = useRoute();
+  const existing = id ? rawCatalog.products.find((p) => p.id === id) : null;
+  const [confirm, confirmNode] = useConfirm();
+
+  const [p, setP] = useState(() => {
+    if (existing) {
+      const brand = catalog.brandById.get(existing.brand_id);
+      return { ...existing, brand_name: brand ? brand.name : "" };
+    }
+    const cat = catalog.categories.find((c) => c.active && c.name === "Eau De Parfum") || catalog.categories.find((c) => c.active) || catalog.categories[0];
+    return { name: "", brand_name: "", category_id: cat ? cat.id : "", gender: "", sale_type: "packed", hsn: cat ? cat.default_hsn : "", gst_rate: cat ? cat.default_gst : 18, image: "", description: "" };
+  });
+  const [vars, setVars] = useState(() => {
+    if (existing)
+      return rawCatalog.variants
+        .filter((v) => v.product_id === existing.id)
+        .map((v) => ({ ...v, cost: v.avg_cost ?? "", opening_stock: "", size_ml: v.size_ml || "" }));
+    return [blankVariant(route.params.get("barcode") || "")];
+  });
+  const [scanFor, setScanFor] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [imgBusy, setImgBusy] = useState(false);
+  const [preview, setPreview] = useState("");
+  const fileRef = useRef(null);
+
+  const set = (patch) => setP((x) => ({ ...x, ...patch }));
+  const setV = (i, patch) => setVars((vs) => vs.map((v, j) => (j === i ? { ...v, ...patch } : v)));
+  const loose = p.sale_type === "loose";
+
+  const onCategory = (cid) => {
+    const c = catalog.categories.find((x) => x.id === Number(cid));
+    set({ category_id: Number(cid), hsn: c ? c.default_hsn : p.hsn, gst_rate: c ? c.default_gst : p.gst_rate, sale_type: c && /loose/i.test(c.name) ? "loose" : p.sale_type });
+  };
+
+  // barcode clash with another item?
+  const clash = (code, vid) => {
+    if (!code) return "";
+    const it = catalog.byBarcode.get(code);
+    if (it && it.id !== vid) return `Already used by ${it.name} ${it.size}`;
+    if (vars.filter((v) => v.barcode === code).length > 1) return "Same barcode used twice here";
+    return "";
+  };
+
+  const generate = async (i) => {
+    try {
+      const r = await api("generateBarcode");
+      setV(i, { barcode: r.data.barcode });
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  };
+
+  const pickPhoto = async (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    setImgBusy(true);
+    try {
+      const img = await compressImage(f);
+      setPreview(img.preview);
+      const r = await api("uploadImage", { data: img.data, mime: img.mime, name: (p.name || "product") + ".jpg" });
+      set({ image: r.data.image });
+    } catch (ex) {
+      toast(ex.message, "error");
+      setPreview("");
+    } finally {
+      setImgBusy(false);
+    }
+  };
+
+  const save = async () => {
+    if (!p.name.trim()) return toast("Enter the product name", "error");
+    if (!p.category_id) return toast("Choose a category", "error");
+    for (const v of vars) {
+      const c = clash(v.barcode, v.id);
+      if (c) return toast(c, "error");
+    }
+    setBusy(true);
+    try {
+      const payload = {
+        ...p,
+        id: existing ? existing.id : undefined,
+        brand_id: undefined,
+        variants: vars.map((v) => ({
+          id: v.id || undefined,
+          size_label: loose ? v.size_label || "Loose (per ml)" : v.size_label,
+          size_ml: v.size_ml,
+          barcode: v.barcode,
+          mrp: v.mrp,
+          sell_price: v.sell_price,
+          cost: v.cost,
+          opening_stock: v.id ? 0 : v.opening_stock,
+          reorder_level: v.reorder_level,
+          active: v.active,
+        })),
+      };
+      const r = await api("saveProduct", payload);
+      await refreshCatalog();
+      toast(r.message, "success");
+      goBack("stock");
+    } catch (e) {
+      toast(e.message, "error", 4000);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleActive = async () => {
+    const hide = existing.active;
+    if (hide && !(await confirm({ title: "Hide this product?", text: "It won't show on the Sell screen. Sales history is kept. You can show it again any time.", okText: "Hide" }))) return;
+    try {
+      const r = await api("toggleProduct", { id: existing.id });
+      await refreshCatalog();
+      toast(r.message, "success");
+      goBack("stock");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  };
+
+  // only for products added by mistake — the server refuses anything already used in bills or stock
+  const remove = async () => {
+    const ok = await confirm({
+      title: "Delete this product?",
+      text: "Only for products added by mistake. Products already used in bills or stock can only be hidden.",
+      okText: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const r = await api("deleteProduct", { id: existing.id });
+      goBack("stock");
+      refreshCatalog();
+      toast(r.message, "success");
+    } catch (e) {
+      toast(e.message, "error", 4000);
+    }
+  };
+
+  const brandNames = useMemo(() => catalog.brands.map((b) => b.name), [catalog]);
+  if (!isManager) return null;
+  const img = preview || imageUrl(p.image, 400);
+
+  return (
+    <>
+      <TopBar
+        title={existing ? "Edit product" : "Add product"}
+        back="stock"
+        right={
+          existing && (
+            <button className="icon-btn" onClick={toggleActive} aria-label={existing.active ? "Hide product" : "Show product"}>
+              {existing.active ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          )
+        }
+      />
+      <div className="page has-bar">
+        <div className="card">
+          <div className="row mb">
+            <button
+              type="button"
+              onClick={() => fileRef.current.click()}
+              style={{ width: 88, height: 88, borderRadius: 12, border: "2px dashed var(--line)", background: "var(--bg)", overflow: "hidden", display: "grid", placeItems: "center", flex: "none", cursor: "pointer" }}
+              aria-label="Add photo"
+            >
+              {imgBusy ? <span className="spinner" /> : img ? <img src={img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Camera color="var(--muted)" />}
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={pickPhoto} />
+            <div className="grow small muted">
+              Tap to take a photo or choose from gallery.
+              {p.image && (
+                <button className="btn ghost small" onClick={() => { set({ image: "" }); setPreview(""); }}>
+                  <ImageOff size={15} /> Remove photo
+                </button>
+              )}
+            </div>
+          </div>
+          <Field label="Product name">
+            <input className="input" value={p.name} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Asad Eau De Parfum" autoCapitalize="words" />
+          </Field>
+          <Field label="Brand" hint="Pick from the list or type a new brand">
+            <input className="input" list="brand-list" value={p.brand_name} onChange={(e) => set({ brand_name: e.target.value })} placeholder="e.g. Lattafa" autoCapitalize="words" />
+            <datalist id="brand-list">
+              {brandNames.map((b) => (
+                <option key={b} value={b} />
+              ))}
+            </datalist>
+          </Field>
+          <Field label="Category">
+            <select className="input" value={p.category_id} onChange={(e) => onCategory(e.target.value)}>
+              {catalog.categories.filter((c) => c.active || c.id === p.category_id).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="field">
+            <label>For</label>
+            <Chips value={p.gender || ""} onChange={(g) => set({ gender: g })} options={[{ value: "men", label: "Men" }, { value: "women", label: "Women" }, { value: "unisex", label: "Unisex" }, { value: "", label: "—" }]} />
+          </div>
+          <div className="field">
+            <label>How is it sold?</label>
+            <Seg value={p.sale_type} onChange={(v) => set({ sale_type: v })} options={[{ value: "packed", label: "Packed (pieces)" }, { value: "loose", label: "Loose attar (per ml)" }]} />
+          </div>
+          <div className="grid-2">
+            <Field label="HSN code">
+              <input className="input" inputMode="numeric" value={p.hsn} onChange={(e) => set({ hsn: e.target.value })} />
+            </Field>
+            <Field label="GST %">
+              <select className="input" value={p.gst_rate} onChange={(e) => set({ gst_rate: Number(e.target.value) })}>
+                {GST.map((g) => (
+                  <option key={g} value={g}>
+                    {g}%
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          {!p.image && !preview && (
+            <Field label="…or image link (optional)" hint="e.g. copy image address from groovyfragrances.in">
+              <input className="input" inputMode="url" value={p.image} onChange={(e) => set({ image: e.target.value.trim() })} placeholder="https://" />
+            </Field>
+          )}
+        </div>
+
+        <div className="section-label">{loose ? "Price & stock (per ml)" : "Sizes"}</div>
+        {vars.map((v, i) => {
+          const err = clash(v.barcode, v.id);
+          return (
+            <div className="card" key={i}>
+              {!loose && (
+                <div className="row between mb">
+                  <b>Size {i + 1}</b>
+                  {!v.id && vars.length > 1 && (
+                    <button className="icon-btn" onClick={() => setVars((vs) => vs.filter((_, j) => j !== i))} aria-label="Remove size">
+                      <Trash2 size={18} />
+                    </button>
+                  )}
+                  {v.id > 0 && (
+                    <label className="row small">
+                      <input type="checkbox" checked={!!v.active} onChange={(e) => setV(i, { active: e.target.checked ? 1 : 0 })} /> For sale
+                    </label>
+                  )}
+                </div>
+              )}
+              {!loose && (
+                <div className="grid-2">
+                  <Field label="Size">
+                    <input className="input" value={v.size_label} onChange={(e) => setV(i, { size_label: e.target.value })} placeholder="100ml" />
+                  </Field>
+                  <Field label="ml (optional)">
+                    <input className="input" inputMode="decimal" value={v.size_ml} onChange={(e) => setV(i, { size_ml: e.target.value.replace(/[^\d.]/g, "") })} />
+                  </Field>
+                </div>
+              )}
+              <Field label="Barcode" error={err} hint="Scan the box, type it, or generate a code for items without one">
+                <div className="row gap-s">
+                  <input
+                    className="input grow"
+                    inputMode="numeric"
+                    value={v.barcode}
+                    data-scan-ignore
+                    onChange={(e) => setV(i, { barcode: e.target.value.replace(/\s/g, "") })}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), beepOk())}
+                    placeholder="Scan or type"
+                  />
+                  <button className="icon-btn filled" onClick={() => setScanFor(i)} aria-label="Scan barcode with camera">
+                    <ScanLine size={20} />
+                  </button>
+                  <button className="icon-btn soft" onClick={() => generate(i)} aria-label="Generate barcode">
+                    <Wand2 size={19} />
+                  </button>
+                </div>
+              </Field>
+              <div className="grid-2">
+                <Field label={loose ? "MRP per ml" : "MRP"}>
+                  <MoneyInput value={String(v.mrp ?? "")} onChange={(x) => setV(i, { mrp: x })} />
+                </Field>
+                <Field label={loose ? "Selling price per ml" : "Selling price"}>
+                  <MoneyInput value={String(v.sell_price ?? "")} onChange={(x) => setV(i, { sell_price: x })} />
+                </Field>
+                <Field label={loose ? "Cost per ml" : "Cost price"} hint="Hidden from salesmen">
+                  <MoneyInput value={String(v.cost ?? "")} onChange={(x) => setV(i, { cost: x })} />
+                </Field>
+                {!v.id ? (
+                  <Field label={loose ? "Opening stock (ml)" : "Opening stock"}>
+                    <input className="input" inputMode="decimal" value={v.opening_stock} onChange={(e) => setV(i, { opening_stock: e.target.value.replace(/[^\d.]/g, "") })} placeholder="0" />
+                  </Field>
+                ) : (
+                  <Field label="In stock" hint="Use Stock In / Adjust to change">
+                    <input className="input" value={`${v.stock_qty}${loose ? " ml" : ""}`} disabled />
+                  </Field>
+                )}
+                <Field label={loose ? "Low stock alert (ml)" : "Low stock alert at"}>
+                  <input className="input" inputMode="numeric" value={v.reorder_level} onChange={(e) => setV(i, { reorder_level: e.target.value.replace(/[^\d.]/g, "") })} />
+                </Field>
+              </div>
+              {Number(v.sell_price) > 0 && Number(v.cost) > 0 && (
+                <div className="tiny muted">
+                  Margin {Math.round(((Number(v.sell_price) - Number(v.cost)) / Number(v.sell_price)) * 100)}% (before GST)
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {!loose && (
+          <button className="btn secondary block mt" onClick={() => setVars((vs) => [...vs, blankVariant()])}>
+            <Plus size={18} /> Add another size
+          </button>
+        )}
+        {existing && isAdmin && (
+          <button className="btn ghost block mt" style={{ color: "var(--bad)" }} onClick={remove}>
+            <Trash2 size={18} /> Delete product
+          </button>
+        )}
+      </div>
+      <div className="cartbar" style={{ background: "#fff", boxShadow: "var(--shadow-up)", padding: 8, cursor: "default" }}>
+        <Button className="block big grow" loading={busy} onClick={save}>
+          {existing ? "Save changes" : "Add product"}
+        </Button>
+      </div>
+      <CameraScanner
+        open={scanFor !== null}
+        onClose={() => setScanFor(null)}
+        continuous={false}
+        title="Scan product barcode"
+        onCode={(code) => {
+          setV(scanFor, { barcode: code });
+          const c = catalog.byBarcode.get(code);
+          return c ? { ok: false, label: `Already used by ${c.name} ${c.size}` } : { ok: true, label: code };
+        }}
+      />
+      {confirmNode}
+    </>
+  );
+}

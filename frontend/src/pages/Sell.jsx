@@ -1,0 +1,208 @@
+import { useMemo, useRef, useState } from "react";
+import { ChevronRight, Clock, SearchX } from "lucide-react";
+import { useApp } from "../store";
+import TopBar from "../components/TopBar";
+import CameraScanner from "../components/CameraScanner";
+import { Chips, Empty, SearchBar } from "../components/ui";
+import { NeedBranch } from "../components/Branch";
+import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
+import { searchItems, lookupBarcode, imageUrl } from "../lib/catalog";
+import { addLine, computeBill, qtyInCart } from "../lib/cart";
+import { beepError, beepOk, unlockAudio } from "../lib/feedback";
+import { inr, initials } from "../lib/format";
+import CartSheet from "./sell/CartSheet";
+import CheckoutSheet from "./sell/CheckoutSheet";
+import LooseSheet from "./sell/LooseSheet";
+import SuccessSheet from "./sell/SuccessSheet";
+import HeldSheet from "./sell/HeldSheet";
+
+export default function Sell() {
+  const { catalog, cart, setCart, settings, toast, isAllBranches } = useApp();
+  const [q, setQ] = useState("");
+  const [cat, setCat] = useState("all");
+  const [scanOpen, setScanOpen] = useState(false);
+  const [sheet, setSheet] = useState(null); // cart | checkout | held
+  const [loose, setLoose] = useState(null);
+  const [done, setDone] = useState(null);
+  const searchRef = useRef(null);
+  const allowNeg = settings.allow_negative_stock === "yes";
+
+  const sellable = useMemo(() => catalog.items.filter((i) => i.active), [catalog]);
+  const catOptions = useMemo(() => {
+    const used = new Set(sellable.map((i) => i.category_id));
+    return [{ value: "all", label: "All" }, ...catalog.categories.filter((c) => used.has(c.id)).map((c) => ({ value: c.id, label: c.name }))];
+  }, [catalog, sellable]);
+
+  const shown = useMemo(() => {
+    let list = cat === "all" ? sellable : sellable.filter((i) => i.category_id === cat);
+    list = searchItems(list, q);
+    // in-stock first
+    return [...list.filter((i) => i.stock > 0), ...list.filter((i) => i.stock <= 0)];
+  }, [sellable, cat, q]);
+
+  // add qty (merges with an existing line); returns {ok,label} for scan feedback
+  const addQty = (item, qty) => {
+    if (!item.active) return { ok: false, label: `${item.name} is not for sale` };
+    const inCart = qtyInCart(cart.lines, item.id);
+    if (!allowNeg && inCart + qty > item.stock) {
+      return { ok: false, label: item.stock <= 0 ? `${item.name} ${item.size} is out of stock` : `Only ${item.stock} of ${item.name} ${item.size} in stock` };
+    }
+    setCart((c) => ({ ...c, lines: addLine(c.lines, item.id, qty) }));
+    return { ok: true, label: `${item.name} ${item.size} × ${inCart + qty}` };
+  };
+
+  // tap / scan: loose attar asks for ml, everything else adds 1
+  const addItem = (item) => {
+    if (item.loose) {
+      if (!item.active) return { ok: false, label: `${item.name} is not for sale` };
+      setLoose(item);
+      return { ok: true, label: `${item.name} — choose ml` };
+    }
+    return addQty(item, 1);
+  };
+
+  const onBarcode = (code) => {
+    const item = lookupBarcode(catalog, code);
+    if (!item) return { ok: false, label: `No product with barcode ${code}` };
+    return addItem(item);
+  };
+
+  // Bluetooth / USB scanner
+  useBarcodeScanner(
+    (code, target) => {
+      if (target === searchRef.current) setQ("");
+      const res = onBarcode(code);
+      if (res.ok) beepOk();
+      else beepError();
+      toast(res.label, res.ok ? "success" : "error", 1600);
+    },
+    !scanOpen && !sheet && !loose && !done,
+  );
+
+  const tap = (item) => {
+    unlockAudio();
+    const res = addItem(item);
+    if (!res.ok) {
+      beepError();
+      toast(res.label, "error", 1800);
+    }
+  };
+
+  const preview = useMemo(() => {
+    const lines = cart.lines
+      .map((l) => {
+        const it = catalog.byVariant.get(l.variant_id);
+        return it ? { ...l, price: it.price, gst_rate: it.gst } : null;
+      })
+      .filter(Boolean);
+    return computeBill(lines, Number(cart.bill_disc) || 0, settings.round_off !== "no");
+  }, [cart, catalog, settings.round_off]);
+  const pieces = cart.lines.reduce((s, l) => s + (catalog.byVariant.get(l.variant_id)?.unit === "ml" ? 1 : l.qty), 0);
+
+  if (isAllBranches)
+    return (
+      <>
+        <TopBar title="New Sale" />
+        <div className="page">
+          <NeedBranch what="sell" />
+        </div>
+      </>
+    );
+
+  return (
+    <>
+      <TopBar
+        title="New Sale"
+        right={
+          <button className="icon-btn" onClick={() => setSheet("held")} aria-label="Held bills">
+            <Clock />
+          </button>
+        }
+      />
+      <div className={"page" + (cart.lines.length ? " has-bar" : "")}>
+        <SearchBar
+          inputRef={searchRef}
+          value={q}
+          onChange={setQ}
+          placeholder="Search name, brand, size or barcode"
+          onScan={() => {
+            unlockAudio();
+            setScanOpen(true);
+          }}
+        />
+        <div className="mt">
+          <Chips options={catOptions} value={cat} onChange={setCat} />
+        </div>
+
+        {shown.length === 0 ? (
+          <Empty icon={SearchX} title="No products found" text={q ? "Try a different word, or scan the barcode." : "Add products in Stock first."} />
+        ) : (
+          <div className="pgrid mt">
+            {shown.slice(0, 200).map((it) => {
+              const inCart = qtyInCart(cart.lines, it.id);
+              return <ProductCard key={it.id} item={it} inCart={inCart} onTap={() => tap(it)} />;
+            })}
+          </div>
+        )}
+        {shown.length > 200 && <div className="muted small center mt">Showing 200 of {shown.length}. Search to narrow down.</div>}
+      </div>
+
+      {cart.lines.length > 0 && !sheet && (
+        <button className="cartbar" onClick={() => setSheet("cart")}>
+          <span className="count">{Math.round(pieces)}</span>
+          <div>
+            <div className="tiny" style={{ color: "var(--gold)" }}>{cart.lines.length} item{cart.lines.length > 1 ? "s" : ""} in bill</div>
+            <div className="total">{inr(preview.grand_total)}</div>
+          </div>
+          <span className="go">
+            View bill <ChevronRight size={18} />
+          </span>
+        </button>
+      )}
+
+      <CameraScanner open={scanOpen} onClose={() => setScanOpen(false)} onCode={onBarcode} title="Scan to add to bill" />
+      <LooseSheet item={loose} onClose={() => setLoose(null)} onAdd={(item, ml) => addQty(item, ml)} />
+      <CartSheet open={sheet === "cart"} onClose={() => setSheet(null)} preview={preview} onCheckout={() => setSheet("checkout")} onHeld={() => setSheet(null)} />
+      <CheckoutSheet
+        open={sheet === "checkout"}
+        onClose={() => setSheet("cart")}
+        preview={preview}
+        onDone={(detail) => {
+          setSheet(null);
+          setDone(detail);
+        }}
+      />
+      <HeldSheet open={sheet === "held"} onClose={() => setSheet(null)} />
+      <SuccessSheet detail={done} onClose={() => setDone(null)} />
+    </>
+  );
+}
+
+function ProductCard({ item, inCart, onTap }) {
+  const url = imageUrl(item.image, 300);
+  const out = item.stock <= 0;
+  return (
+    <button className={"pcard" + (inCart ? " in-cart" : "") + (out ? " out" : "")} onClick={onTap}>
+      <div className="thumb">{url ? <img src={url} alt="" loading="lazy" /> : <div className="placeholder-mono">{initials(item.brand || item.name)}</div>}</div>
+      {inCart > 0 && <span className="qty-badge">{item.unit === "ml" ? `${inCart}ml` : `×${inCart}`}</span>}
+      <div className="body">
+        {item.brand && <div className="brand-label ellipsis">{item.brand}</div>}
+        <div className="name">{item.name}</div>
+        <div className="small muted">{item.size}</div>
+        <div className="meta">
+          <div>
+            <div className="price">
+              {inr(item.price)}
+              {item.unit === "ml" && <span className="tiny muted">/ml</span>}
+            </div>
+            {item.mrp > item.price && <div className="mrp">{inr(item.mrp)}</div>}
+          </div>
+          <span className={"tiny bold " + (out ? "bad-text" : item.reorder > 0 && item.stock <= item.reorder ? "" : "muted")}>
+            {out ? "Out" : item.unit === "ml" ? `${item.stock}ml` : `${item.stock} left`}
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+}
+

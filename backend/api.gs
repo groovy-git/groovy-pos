@@ -1,0 +1,138 @@
+/**
+ * Web API. The phone app POSTs {action, token, payload} as text/plain JSON
+ * (text/plain avoids a CORS preflight, which Apps Script cannot answer).
+ * Every action is listed here with the roles allowed to call it — the role always
+ * comes from the server-side session, never from the request.
+ */
+
+const A_ = ["admin"];
+const AM_ = ["admin", "manager"];
+const ALL_ = ["admin", "manager", "salesman"];
+
+// built lazily: Apps Script evaluates files in load order, so top-level code
+// must not reference functions from other files
+let ACTIONS_CACHE_ = null;
+function actions_() {
+    if (ACTIONS_CACHE_) return ACTIONS_CACHE_;
+    ACTIONS_CACHE_ = {
+    // public
+    ping: { fn: () => ({ data: { time: nowStr_() } }), public: true },
+    login: { fn: apiLogin_, public: true },
+    forgotPassword: { fn: apiForgotPassword_, public: true },
+    resetPassword: { fn: apiResetPassword_, public: true },
+
+    // everyone logged in
+    bootstrap: { fn: apiBootstrap_, roles: ALL_ },
+    me: { fn: apiMe_, roles: ALL_ },
+    logout: { fn: apiLogout_, roles: ALL_ },
+    changePassword: { fn: apiChangePassword_, roles: ALL_ },
+    getSettings: { fn: apiGetSettings_, roles: ALL_ },
+    getCatalog: { fn: apiGetCatalog_, roles: ALL_ },
+    listSellers: { fn: apiListSellers_, roles: ALL_ },
+    findCustomer: { fn: apiFindCustomer_, roles: ALL_ },
+    listCustomers: { fn: apiListCustomers_, roles: ALL_ },
+    saveCustomer: { fn: apiSaveCustomer_, roles: ALL_ },
+    customerHistory: { fn: apiCustomerHistory_, roles: ALL_ },
+    completeSale: { fn: apiCompleteSale_, roles: ALL_ },
+    listSales: { fn: apiListSales_, roles: ALL_ },
+    getSale: { fn: apiGetSale_, roles: ALL_ },
+    holdBill: { fn: apiHoldBill_, roles: ALL_ },
+    listHeld: { fn: apiListHeld_, roles: ALL_ },
+    deleteHeld: { fn: apiDeleteHeld_, roles: ALL_ },
+    dashboard: { fn: apiDashboard_, roles: ALL_ },
+    report: { fn: apiReport_, roles: ALL_ }, // per-report check inside
+    movements: { fn: apiMovements_, roles: ALL_ },
+    emailDayClose: { fn: apiEmailDayClose_, roles: ALL_ }, // salesman gets own figures only
+
+    // admin + manager
+    saveBrand: { fn: apiSaveBrand_, roles: AM_ },
+    saveCategory: { fn: apiSaveCategory_, roles: AM_ },
+    deleteCategory: { fn: apiDeleteCategory_, roles: A_ },
+    saveProduct: { fn: apiSaveProduct_, roles: AM_ },
+    toggleProduct: { fn: apiToggleProduct_, roles: AM_ },
+    deleteProduct: { fn: apiDeleteProduct_, roles: A_ },
+    generateBarcode: { fn: apiGenerateBarcode_, roles: AM_ },
+    uploadImage: { fn: apiUploadImage_, roles: AM_ },
+    importCatalog: { fn: apiImportCatalog_, roles: AM_ },
+    stockIn: { fn: apiStockIn_, roles: AM_ },
+    stockInBatches: { fn: apiStockInBatches_, roles: AM_ },
+    adjustStock: { fn: apiAdjustStock_, roles: AM_ },
+    transferStock: { fn: apiTransferStock_, roles: AM_ },
+    listTransfers: { fn: apiListTransfers_, roles: AM_ },
+    voidSale: { fn: apiVoidSale_, roles: AM_ },
+    returnItems: { fn: apiReturnItems_, roles: AM_ },
+    listExpenses: { fn: apiListExpenses_, roles: AM_ },
+    saveExpense: { fn: apiSaveExpense_, roles: AM_ },
+    deleteExpense: { fn: apiDeleteExpense_, roles: AM_ },
+
+    // admin only
+    listUsers: { fn: apiListUsers_, roles: A_ },
+    saveUser: { fn: apiSaveUser_, roles: A_ },
+    toggleUser: { fn: apiToggleUser_, roles: A_ },
+    deleteUser: { fn: apiDeleteUser_, roles: A_ },
+    saveSettings: { fn: apiSaveSettings_, roles: A_ },
+    listLogs: { fn: apiListLogs_, roles: A_ },
+    listBranches: { fn: apiListBranches_, roles: A_ },
+    saveBranch: { fn: apiSaveBranch_, roles: A_ },
+    };
+    return ACTIONS_CACHE_;
+}
+
+function doPost(e) {
+    let req = null;
+    try {
+        req = JSON.parse((e && e.postData && e.postData.contents) || "{}");
+    } catch (err) {
+        return json_({ success: false, code: "BAD_REQUEST", message: "Invalid request" });
+    }
+    return json_(dispatch_(req));
+}
+
+function doGet() {
+    return json_({ success: true, app: APP.NAME, time: nowStr_() });
+}
+
+function json_(obj) {
+    return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function dispatch_(req) {
+    resetReqCache_();
+    const action = req && req.action;
+    const acts = actions_();
+    const def = Object.prototype.hasOwnProperty.call(acts, action) ? acts[action] : null;
+    if (!def) return { success: false, code: "BAD_ACTION", message: "Unknown action" };
+    try {
+        let ctx = null;
+        if (!def.public) {
+            ctx = authenticate_(req.token);
+            if (def.roles.indexOf(ctx.user.role) < 0) fail_("You don't have permission to do this", "FORBIDDEN");
+            // the branch this request works in — checked against the user's allowed branches
+            ctx.branch_id = resolveBranch_(ctx.user, req.branch_id);
+        }
+        const res = def.fn(req.payload || {}, ctx) || {};
+        return {
+            success: true,
+            message: res.message || "",
+            data: res.data === undefined ? null : res.data,
+            cv: ctx ? num_(setting_("catalog_version"), 1) : undefined,
+        };
+    } catch (err) {
+        if (err && err.isAppError) return { success: false, code: err.code, message: err.message };
+        console.error("API " + action + ":", err && err.stack ? err.stack : err);
+        return { success: false, code: "SERVER", message: "Something went wrong. Please try again." };
+    }
+}
+
+function apiBootstrap_(p, ctx) {
+    return {
+        data: {
+            user: publicUser_(ctx.user),
+            branch_id: ctx.branch_id,
+            branches: activeBranches_().map(branchOut_),
+            settings: publicSettings_(ctx),
+            catalog: apiGetCatalog_(p, ctx).data,
+            sellers: apiListSellers_(p, ctx).data,
+        },
+    };
+}

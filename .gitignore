@@ -1,0 +1,6 @@
+node_modules
+dist
+.env.local
+backend/.clasp.json
+# local backup copies — never publish
+bk/
