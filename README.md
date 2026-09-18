@@ -114,7 +114,7 @@ The app prints an **80 mm receipt** or an **A4 tax invoice** using the phone's o
 3. Add products. Either:
     - **Stock → Import**: download the template, fill it in Excel or Google Sheets, then upload it as CSV; or
     - **Stock → Add product**: scan the box barcode. For items without a barcode (loose attar, decants, bottles), tap the magic-wand button next to the barcode box to generate one.
-4. **Stock → Stock In**: scan the boxes you receive. Scanning the same box again adds 1.
+4. **Stock → Stock In**: scan the boxes you receive. Scanning the same box again adds 1. On **Add product**, scanning a box that already exists adds 1 to its stock straight away (saved immediately, no list). Use **Stock In** for a whole delivery with costs.
 5. Make a test sale, then **void** it from **Sales → bill → Void bill**. Voiding is only possible on the same day.
 
 **Daily use**

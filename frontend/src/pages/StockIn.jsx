@@ -3,7 +3,7 @@ import { Trash2, PackagePlus, ScanLine } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
 import { navigate } from "../lib/router";
-import { searchItems, lookupBarcode } from "../lib/catalog";
+import { searchItems, lookupBarcode, STOCKIN_PENDING as PENDING } from "../lib/catalog";
 import { inr, r2, r3, qtyLabel } from "../lib/format";
 import { beepError, beepOk, unlockAudio } from "../lib/feedback";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
@@ -13,7 +13,6 @@ import { Button, Empty, Field, MoneyInput, SearchBar, Stepper, Thumb, useConfirm
 import { NeedBranch } from "../components/Branch";
 
 const draftKey = (branchId) => "gp_stockin_" + branchId; // goods are received at one branch
-const PENDING = "gp_stockin_pending";
 const loadDraft = (key) => {
   try {
     return JSON.parse(sessionStorage.getItem(key)) || { lines: [], supplier_note: "", bill_ref: "" };
@@ -53,17 +52,18 @@ export default function StockIn() {
     return { ok: true, label: `${item.name} ${item.size} × ${ex ? r3(Number(ex.qty) + qty) : qty || "added"}` };
   };
 
-  // product just created from an unknown barcode → add it now
+  // item handed over (loose item scanned on Add product, or product just created from here) → put it on the list
   useEffect(() => {
     const code = sessionStorage.getItem(PENDING);
-    if (!code) return;
+    if (!code || isAllBranches) return; // wait until a branch is chosen
     const it = lookupBarcode(catalog, code);
     if (it) {
       sessionStorage.removeItem(PENDING);
-      add(it, it.unit === "ml" ? 0 : 1);
-      toast(`${it.name} added to stock in`, "success");
+      const loose = it.unit === "ml";
+      add(it, loose ? 0 : 1);
+      toast(loose ? `${it.name} added to the list — enter the ml, then tap Save stock in` : `${it.name} ${it.size} added to the list — tap Save stock in to update stock`, "success", 3500);
     }
-  }, [catalog]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [catalog, isAllBranches]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const unknown = async (code) => {
     setScan(false);

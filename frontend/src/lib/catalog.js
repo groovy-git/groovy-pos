@@ -71,6 +71,9 @@ export function searchItems(items, q) {
   return items.filter((it) => words.every((w) => it.search.includes(w)));
 }
 
+// barcode handed to Stock In, which adds 1 of it when it opens (from Add product or a just-created product)
+export const STOCKIN_PENDING = "gp_stockin_pending";
+
 export function lookupBarcode(cat, code) {
   const c = String(code || "").replace(/\s+/g, "");
   return cat.byBarcode.get(c) || null;
