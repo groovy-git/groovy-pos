@@ -240,6 +240,27 @@ ok(call("resetPassword", { email: "sameer@x.in", otp, password: "newpass1" }), "
 check("old session ended", call("getCatalog", {}, S1).code === "AUTH_EXPIRED");
 ok(call("login", { email: "sameer@x.in", password: "newpass1" }), "login new pwd");
 
+// ---- lost replies: retries with the same req_id never save twice ----
+const rqStock = () => call("getCatalog", {}, T, 1).data.variants.find((v) => v.id === vBottle.id).stock_qty;
+const rq0 = rqStock();
+const rqA = call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 2, unit_cost: 40 }] }, T, 1, "req-test-0001");
+const rqA2 = call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 2, unit_cost: 40 }] }, T, 1, "req-test-0001");
+check("retry with same req_id: saved once", rqA.success && rqStock() === rq0 + 2, { rq0, now: rqStock() });
+check("retry with same req_id: same reply", JSON.stringify(rqA2) === JSON.stringify(rqA));
+call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 2, unit_cost: 40 }] }, T, 1, "req-test-0002");
+check("new req_id: saved again", rqStock() === rq0 + 4);
+env.cache.set("rq_req-test-0003", "PENDING");
+check("still running → IN_PROGRESS", call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 1 }] }, T, 1, "req-test-0003").code === "IN_PROGRESS" && rqStock() === rq0 + 4);
+const rqBad = call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 0 }] }, T, 1, "req-test-0004");
+const rqBad2 = call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 3 }] }, T, 1, "req-test-0004");
+check("failed try is not remembered", !rqBad.success && rqBad2.success && rqStock() === rq0 + 7, { rqBad, rqBad2 });
+const rqR1 = call("getCatalog", {}, T, 1, "req-test-0005");
+call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 1 }] }, T, 1, "req-test-0006");
+const rqR2 = call("getCatalog", {}, T, 1, "req-test-0005");
+check("reads are never replayed", rqR2.data.variants.find((v) => v.id === vBottle.id).stock_qty === rqR1.data.variants.find((v) => v.id === vBottle.id).stock_qty + 1);
+check("no req_id works as before", call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 1 }] }, T, 1).success && rqStock() === rq0 + 9);
+check("bad req_id ignored", call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 1 }] }, T, 1, "x").success && rqStock() === rq0 + 10);
+
 // ---- CSV import ----
 const imp = ok(call("importCatalog", { rows: [
     { brand: "Armaf", product: "Club De Nuit", category: "Eau De Parfum", size_label: "105ml", mrp: 3300, sell_price: 2499, cost: 1800, opening_stock: 3, barcode: "6294015152225" },

@@ -26,6 +26,8 @@ function vm_run(code) {
 }
 
 const LATENCY = Number(process.env.LATENCY || 250); // feel of a real Apps Script round-trip
+// FAIL_ECHO=0.3 → 30% of replies are lost AFTER the action ran, like Google's intermittent 404 on …/macros/echo
+const FAIL_ECHO = Number(process.env.FAIL_ECHO || 0);
 
 http
     .createServer((req, res) => {
@@ -56,6 +58,11 @@ http
                     const r = JSON.parse(out.content);
                     console.log(new Date().toISOString().slice(11, 19), j.action, r.success ? "ok" : "ERR " + r.message);
                 } catch (e) {}
+                if (FAIL_ECHO && Math.random() < FAIL_ECHO) {
+                    res.statusCode = 404;
+                    res.setHeader("Content-Type", "text/html");
+                    return res.end("<html><body>Sorry, unable to open the file at this time.</body></html>");
+                }
                 res.setHeader("Content-Type", "application/json");
                 res.end(out.content);
             }, LATENCY);

@@ -85,7 +85,46 @@ function doPost(e) {
     } catch (err) {
         return json_({ success: false, code: "BAD_REQUEST", message: "Invalid request" });
     }
-    return json_(dispatch_(req));
+    return json_(dispatchOnce_(req));
+}
+
+// safe to run again — a retried read just reads again
+const READ_ACTIONS_ = {
+    bootstrap: 1, getCatalog: 1, dashboard: 1, listSales: 1, getSale: 1, report: 1, listCustomers: 1, findCustomer: 1,
+    listHeld: 1, movements: 1, listExpenses: 1, listUsers: 1, listLogs: 1, customerHistory: 1, listSellers: 1,
+    getSettings: 1, stockInBatches: 1, listTransfers: 1, listBranches: 1, me: 1, ping: 1,
+};
+
+/**
+ * Google sometimes loses the reply (404 on the …/macros/echo redirect) after the script has already run.
+ * The app then retries with the same req_id: a write that already happened returns its saved reply
+ * instead of running twice (no double stock-in, expense, return…). Requests without req_id run as before.
+ */
+function dispatchOnce_(req) {
+    const id = req && typeof req.req_id === "string" && /^[A-Za-z0-9-]{8,64}$/.test(req.req_id) ? req.req_id : "";
+    if (!id || READ_ACTIONS_[req.action]) return dispatch_(req);
+    const cache = CacheService.getScriptCache();
+    const key = "rq_" + id;
+    const seen = cache.get(key);
+    if (seen === "PENDING") return { success: false, code: "IN_PROGRESS", message: "Still saving your last request — one moment…" };
+    if (seen) {
+        try {
+            return JSON.parse(seen);
+        } catch (e) {
+            /* unreadable → run again */
+        }
+    }
+    cache.put(key, "PENDING", 120); // a retry arriving while this runs waits instead of running again
+    const res = dispatch_(req);
+    try {
+        const out = JSON.stringify(res);
+        // failures aren't kept, so a retry can try again; big replies can't be cached (100 KB limit)
+        if (res.success && out.length < 90000) cache.put(key, out, 600);
+        else cache.remove(key);
+    } catch (e) {
+        cache.remove(key);
+    }
+    return res;
 }
 
 function doGet() {

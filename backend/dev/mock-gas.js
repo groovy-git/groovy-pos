@@ -209,8 +209,8 @@ function createEnv() {
         .sort()
         .forEach((f) => vm.runInContext(fs.readFileSync(path.join(dir, f), "utf8"), ctx, { filename: f }));
     vm.runInContext("alert_ = function (m) { __alerts.push(m); };", Object.assign(ctx, { __alerts: alerts }));
-    const call = (action, payload, token, branch_id) => {
-        const out = ctx.doPost({ postData: { contents: JSON.stringify({ action, payload, token, branch_id }) } });
+    const call = (action, payload, token, branch_id, req_id) => {
+        const out = ctx.doPost({ postData: { contents: JSON.stringify({ action, payload, token, branch_id, req_id }) } });
         return JSON.parse(out.content);
     };
     return { ctx, ss, call, mails, alerts, cache, triggers };

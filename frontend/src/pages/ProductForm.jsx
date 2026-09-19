@@ -64,7 +64,7 @@ export default function ProductForm({ id }) {
       });
     } catch (e) {
       beepError();
-      toast(e.message + " — nothing was saved", "error", 4000);
+      toast(e.code === "NETWORK" ? e.message : e.message + " — nothing was saved", "error", 4000);
     } finally {
       q.busy = false;
       if (Object.keys(q.pending).length) flushQuick(); // scans that came in meanwhile
