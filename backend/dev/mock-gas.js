@@ -163,7 +163,10 @@ function createDrive() {
             o.getFoldersByName = (n) => iter(children(o, "folder").filter((x) => x.name === n));
             o.createFolder = (n) => make("folder", n, o);
             o.createFile = (blob) => make("file", blob.name, o, { mime: blob.mime, html: blob.html });
+            o.getFiles = () => iter(children(o, "file"));
+            o.getFolders = () => iter(children(o, "folder"));
         }
+        o.moveTo = (f) => ((o.parent = f), o);
         o.setSharing = () => o;
         items.set(o.id, o);
         return o;

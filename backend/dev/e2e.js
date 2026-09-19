@@ -514,7 +514,11 @@ const pdfSaleReq = { client_ref: "pdf-1", lines: [{ variant_id: vBottle.id, qty:
 const pdfSale = ok(call("completeSale", pdfSaleReq, T, 1), "sale for PDF").sale;
 const pdf1 = ok(call("saveInvoicePdf", { id: pdfSale.id }, T, 1), "save PDF manually");
 const pdfFile = pdfFiles().find((f) => f.name === pdfSale.invoice_no.replace(/\//g, "-") + ".pdf");
-check("PDF saved in Groovy POS/Sales_Invoices/<month>", !!pdfFile && pathOf(pdfFile) === "My Drive/Groovy POS/Sales_Invoices/" + String(pdfSale.date).slice(0, 7), pdfFile && pathOf(pdfFile));
+const fyDir = (d) => require("vm").runInContext("fyFolderName_(" + JSON.stringify(String(d)) + ")", ctx);
+check("PDF saved in Sales_Invoices/FY yyyy-yy/MM", !!pdfFile && pathOf(pdfFile) === "My Drive/Groovy POS/Sales_Invoices/" + fyDir(pdfSale.date) + "/" + String(pdfSale.date).slice(5, 7), pdfFile && pathOf(pdfFile));
+check("FY folder names", fyDir("2026-09-19") === "FY 2026-27" && fyDir("2027-02-10") === "FY 2026-27" && fyDir("2026-03-31") === "FY 2025-26" && fyDir("2099-12-01") === "FY 2099-00");
+const febFolder = require("vm").runInContext('invoiceFolder_("2026-02-15")', ctx);
+check("Feb bill goes to FY 2025-26/02", pathOf({ parent: febFolder }) === "My Drive/Groovy POS/Sales_Invoices/FY 2025-26/02", pathOf({ parent: febFolder }));
 check("pdf_url stored on the bill", !!pdf1.pdf_url && ok(call("getSale", { id: pdfSale.id }, T, 1), "bill detail").sale.pdf_url === pdf1.pdf_url);
 check("PDF html escapes customer name", pdfFile && pdfFile.html.includes("&lt;b&gt;Evil&lt;/b&gt; &amp; Co") && !pdfFile.html.includes("<b>Evil"));
 const pdfCount = pdfFiles().length;
@@ -536,6 +540,14 @@ const pdfLeft = require("vm").runInContext('resetReqCache_(); rows_("Sales").fil
 check("timer: every bill and credit note now has a PDF", jobDone > 0 && pdfLeft === 0, { jobDone, pdfLeft });
 check("credit notes saved as PDFs", require("vm").runInContext('rows_("Returns").every((r) => r.pdf_url)', ctx) &&
     pdfFiles().some((f) => /C-|CN-/.test(f.name) && f.html.includes("CREDIT NOTE")));
+// old yyyy-MM folders (before the FY layout) are moved into FY …/MM by the timer; links stay the same
+const pdfRootF = env.drive.files().length && pdfFile.parent.parent.parent; // Sales_Invoices
+const oldDir = pdfRootF.createFolder("2026-08");
+const oldPdf = oldDir.createFile({ name: "GF-26-27-OLD01.pdf", mime: "application/pdf", html: "old" });
+const oldUrl = oldPdf.getUrl();
+ctx.savePendingInvoicePdfs();
+check("old month folder: PDF moved to FY 2026-27/08, same id and link", pathOf(oldPdf) === "My Drive/Groovy POS/Sales_Invoices/FY 2026-27/08" && oldPdf.getUrl() === oldUrl, pathOf(oldPdf));
+check("old month folder binned", oldDir.trashed === true);
 const pdfTotal = pdfFiles().length;
 check("timer again: nothing new to do", ctx.savePendingInvoicePdfs() === 0 && pdfFiles().length === pdfTotal);
 // turning it off removes the timer and stops the job

@@ -1,5 +1,5 @@
 /**
- * Invoice PDFs in Google Drive:  <folder of the Sheet>/Sales_Invoices/yyyy-MM/GF-26-27-00001.pdf
+ * Invoice PDFs in Google Drive:  <folder of the Sheet>/Sales_Invoices/FY 2026-27/09/GF-26-27-00001.pdf
  *   - made here on the server from the saved bill (the phone only asks), so the app stays light;
  *   - every 15 min a timer saves PDFs for new bills and credit notes (checkout is never slowed down);
  *   - "Save PDF to Drive" on a bill does it at once; a voided bill's PDF is renamed …-VOID.pdf.
@@ -39,11 +39,56 @@ function invoiceRoot_() {
     return root;
 }
 
-function monthFolder_(dateStr) {
-    const root = invoiceRoot_();
-    const name = String(dateStr || todayStr_()).slice(0, 7); // yyyy-MM
-    const it = root.getFoldersByName(name);
-    return it.hasNext() ? it.next() : root.createFolder(name);
+// "FY 2026-27" — April to March, like the invoice numbers (GF/26-27/…)
+function fyFolderName_(dateStr) {
+    const y = parseInt(String(dateStr).slice(0, 4), 10);
+    const start = parseInt(String(dateStr).slice(5, 7), 10) >= 4 ? y : y - 1;
+    return "FY " + start + "-" + pad_((start + 1) % 100, 2);
+}
+
+function subFolder_(parent, name) {
+    const it = parent.getFoldersByName(name);
+    return it.hasNext() ? it.next() : parent.createFolder(name);
+}
+
+// Sales_Invoices/FY 2026-27/09 — the month folder id is remembered so a PDF needs one Drive lookup
+function invoiceFolder_(dateStr) {
+    const date = String(dateStr || todayStr_());
+    const key = "pdf_dir_" + date.slice(0, 7);
+    const props = PropertiesService.getScriptProperties();
+    const cached = props.getProperty(key);
+    if (cached) {
+        try {
+            const f = DriveApp.getFolderById(cached);
+            if (!f.isTrashed()) return f;
+        } catch (e) {
+            /* deleted → find or make it again */
+        }
+    }
+    const month = subFolder_(subFolder_(invoiceRoot_(), fyFolderName_(date)), date.slice(5, 7));
+    props.setProperty(key, month.getId());
+    return month;
+}
+
+/**
+ * PDFs saved before the FY layout sit in Sales_Invoices/yyyy-MM. Move them into FY …/MM (same file ids,
+ * so every link on a bill keeps working) and bin the empty old folder. Time-boxed; the next run continues.
+ */
+function migratePdfFolders_(inTime) {
+    const folders = invoiceRoot_().getFolders();
+    let moved = 0;
+    while (folders.hasNext() && inTime()) {
+        const old = folders.next();
+        if (!/^\d{4}-\d{2}$/.test(old.getName())) continue;
+        const target = invoiceFolder_(old.getName() + "-01");
+        const files = old.getFiles();
+        while (files.hasNext() && inTime()) {
+            files.next().moveTo(target);
+            moved++;
+        }
+        if (!old.getFiles().hasNext() && !old.getFolders().hasNext()) old.setTrashed(true);
+    }
+    return moved;
 }
 
 function makePdf_(html, name, folder) {
@@ -222,7 +267,7 @@ function creditNoteHtml_(r) {
 // builds the PDF outside the lock (it takes a couple of seconds), then records it under a short lock
 function savePdfForSale_(s) {
     const voided = s.status === "voided";
-    const url = makePdf_(invoicePdfHtml_(saleDetail_(s, null)), pdfName_(s.invoice_no, voided), monthFolder_(s.date));
+    const url = makePdf_(invoicePdfHtml_(saleDetail_(s, null)), pdfName_(s.invoice_no, voided), invoiceFolder_(s.date));
     const stored = url + (voided ? PDF_VOID_MARK_ : "");
     return withLock_(() => {
         const fresh = findBy_("Sales", "id", s.id);
@@ -238,7 +283,7 @@ function savePdfForSale_(s) {
 }
 
 function savePdfForReturn_(r) {
-    const url = makePdf_(creditNoteHtml_(r), pdfName_(r.credit_note_no, false), monthFolder_(r.at));
+    const url = makePdf_(creditNoteHtml_(r), pdfName_(r.credit_note_no, false), invoiceFolder_(r.at));
     withLock_(() => {
         const fresh = findBy_("Returns", "id", r.id);
         if (!fresh) return;
@@ -265,6 +310,11 @@ function savePendingInvoicePdfs() {
     const started = Date.now();
     const inTime = () => Date.now() - started < 4 * 60 * 1000; // Apps Script stops at 6 min; the next run continues
     let done = 0;
+    try {
+        done += migratePdfFolders_(inTime); // one-time move from the old yyyy-MM folders
+    } catch (e) {
+        console.error("migratePdfFolders_: " + e);
+    }
     const sales = rows_("Sales").slice().sort((a, b) => a.id - b.id);
     const returns = rows_("Returns").slice().sort((a, b) => a.id - b.id);
     for (let i = 0; i < sales.length && inTime(); i++) {
