@@ -37,6 +37,10 @@ class Range {
         this.sheet.write(this.r, this.c, v);
         return this;
     }
+    clearContent() {
+        for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) this.sheet.cell(this.r + i, this.c + j).v = ""; // keeps formats
+        return this;
+    }
     setNumberFormat(f) {
         for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) this.sheet.cell(this.r + i, this.c + j).fmt = f;
         return this;
@@ -171,6 +175,7 @@ function createEnv() {
                 get: (k) => (cache.has(k) ? cache.get(k) : null),
                 put: (k, v) => cache.set(k, v),
                 remove: (k) => cache.delete(k),
+                removeAll: (keys) => keys.forEach((k) => cache.delete(k)),
             }),
         },
         LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock: () => {}, releaseLock: () => {} }) },

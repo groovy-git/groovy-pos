@@ -8,11 +8,79 @@ function onOpen() {
         .createMenu("Groovy POS")
         .addItem("1. Setup / repair sheets", "setupSheets")
         .addItem("2. Load demo data (test copy only)", "seedDemo")
+        .addItem("3. Reset test data (keep setup)…", "resetTestData")
         .addSeparator()
         .addItem("Email today's day close now", "emailDayCloseNow")
         .addItem("Run self-tests", "runTests")
         .addItem("Show web app URL", "showWebAppUrl")
         .addToUi();
+}
+
+/* ---------- reset test data (going live after testing) ---------- */
+
+// tabs holding day-to-day data; the setup (products, staff, branches, settings) is kept
+const RESET_TABS_ = [
+    "Sales", "Sale_Items", "Payments", "Returns", "Return_Items", "Held_Bills",
+    "Expenses", "Customers", "Stock_Movements", "Stock_In_Batches", "Transfers", "Branch_Stock",
+    "Activity_Logs", "Sessions",
+];
+
+function resetTestData() {
+    const ui = SpreadsheetApp.getUi();
+    const r = ui.prompt(
+        "Reset test data",
+        "This permanently deletes all bills, payments, returns, held bills, expenses, customers, stock history, " +
+            "stock-ins and transfers, sets all stock to 0 and restarts bill numbers at 00001. Everyone is logged out.\n\n" +
+            "Kept: products & prices, categories, brands, staff, branches and shop settings.\n\n" +
+            "Make a backup first (File → Make a copy). Type RESET to continue:",
+        ui.ButtonSet.OK_CANCEL,
+    );
+    if (r.getSelectedButton() !== ui.Button.OK || r.getResponseText().trim() !== "RESET") {
+        alert_("Nothing was changed.");
+        return;
+    }
+    const res = resetTestData_();
+    const lines = Object.keys(res.cleared)
+        .filter((t) => res.cleared[t])
+        .map((t) => "  " + t + ": " + res.cleared[t]);
+    alert_(
+        "Test data cleared.\n\n" + (lines.length ? "Rows removed:\n" + lines.join("\n") + "\n\n" : "") +
+            "Bill numbers restart at 00001. Stock is now 0 — enter real stock with Stock In.\n" +
+            "Everyone has been logged out; log in again on each phone.",
+    );
+}
+
+function resetTestData_() {
+    return withLock_(() => {
+        // log everyone out: cached logins would otherwise keep working for hours
+        const cache = CacheService.getScriptCache();
+        const tokens = rows_("Sessions").map((s) => "s_" + s.token);
+        for (let i = 0; i < tokens.length; i += 100) cache.removeAll(tokens.slice(i, i + 100));
+
+        const cleared = {};
+        RESET_TABS_.forEach((name) => {
+            const t = readTable_(name);
+            cleared[name] = t.rows.length;
+            const last = t.sh.getLastRow();
+            if (last >= 2) t.sh.getRange(2, 1, last - 1, t.keys.length).clearContent(); // owner's extra columns untouched
+            delete REQ_CACHE_[name];
+        });
+
+        const variants = rows_("Variants").filter((v) => v.stock_qty);
+        variants.forEach((v) => (v.stock_qty = 0));
+        writeColumn_("Variants", variants, "stock_qty");
+
+        // bill / credit-note counters restart; generated-barcode counter kept (labels may be printed)
+        const counters = rows_("Settings").filter((s) => /^(inv|cn)_seq_/.test(s.key));
+        const sh = readTable_("Settings").sh;
+        counters.sort((a, b) => b._r - a._r).forEach((s) => sh.deleteRow(s._r));
+        delete REQ_CACHE_["Settings"];
+        delete REQ_CACHE_.__settings;
+
+        bumpCatalogVersion_();
+        log_({ user: { id: 0, name: "Sheet owner" } }, "RESET", "All", "", "Test data cleared (setup kept)");
+        return { cleared, counters: counters.length, stock_reset: variants.length };
+    });
 }
 
 function alert_(msg) {

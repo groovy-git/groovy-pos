@@ -452,6 +452,45 @@ allCats.slice(1).forEach((c) => envC.call("deleteCategory", { id: c.id }, CT));
 const lastCat = envC.call("deleteCategory", { id: allCats[0].id }, CT);
 check("last category kept", !lastCat.success && /at least one/.test(lastCat.message) && envC.call("getCatalog", {}, CT).data.categories.length === 1, lastCat);
 
+// ---- reset test data (keep setup) on a fresh env ----
+const envR = createEnv();
+envR.ctx.setupSheets();
+const rPwd = /Password: (\S+)/.exec(envR.alerts.pop())[1];
+const RT = envR.call("login", { email: "owner@groovy.test", password: rPwd }).data.token;
+const rRun = (code) => require("vm").runInContext("resetReqCache_(); " + code, envR.ctx);
+const rCat = envR.call("getCatalog", {}, RT).data.categories[0].id;
+envR.call("saveSettings", { settings: { business_name: "Groovy Test Shop" } }, RT);
+const rProd = envR.call("saveProduct", {
+    name: "Reset Oud", brand_name: "Groovy", category_id: rCat, hsn: "3303", gst_rate: 18,
+    variants: [{ size_label: "50ml", barcode: "RST001", mrp: 500, sell_price: 400, cost: 200, opening_stock: 5 }],
+}, RT).data.id;
+const rVid = envR.call("getCatalog", {}, RT).data.variants.find((v) => v.barcode === "RST001").id;
+envR.call("generateBarcode", {}, RT);
+check("reset: test data created",
+    envR.call("stockIn", { lines: [{ variant_id: rVid, qty: 2, unit_cost: 200 }] }, RT).success &&
+    envR.call("completeSale", { client_ref: "r-1", lines: [{ variant_id: rVid, qty: 1 }], customer: { phone: "9999988888", name: "Test" },
+        payments: [{ method: "cash", amount: 400 }] }, RT).success &&
+    envR.call("saveExpense", { title: "Tea", amount: 20, method: "cash" }, RT).success &&
+    envR.call("holdBill", { cart: { lines: [{ variant_id: rVid, qty: 1 }] } }, RT).success);
+const rVer = envR.call("getCatalog", {}, RT).data.version;
+const rBc = String(rRun('setting_("internal_barcode_seq")'));
+const rRes = envR.ctx.resetTestData_();
+check("reset: day-to-day tabs empty", rRun('RESET_TABS_.filter((n) => n !== "Activity_Logs").every((n) => rows_(n).length === 0)'), rRes);
+check("reset: only the reset log entry left", rRun('rows_("Activity_Logs").length === 1 && rows_("Activity_Logs")[0].action === "RESET"'));
+check("reset: stock 0", rRun('rows_("Variants").every((v) => v.stock_qty === 0)'));
+check("reset: setup kept", rRun(
+    'rows_("Products").some((p) => p.id === ' + rProd + ') && rows_("Users").length === 1 && rows_("Branches").length >= 1 && ' +
+    'rows_("Categories").length > 1 && setting_("business_name") === "Groovy Test Shop"'));
+check("reset: bill counters removed, barcode counter kept",
+    rRun('!rows_("Settings").some((s) => /^(inv|cn)_seq_/.test(s.key)) && String(setting_("internal_barcode_seq"))') === rBc);
+check("reset: old login rejected", envR.call("getCatalog", {}, RT).code === "AUTH_EXPIRED");
+const RT2 = envR.call("login", { email: "owner@groovy.test", password: rPwd }).data.token;
+check("reset: catalog version bumped", envR.call("getCatalog", {}, RT2).data.version > rVer);
+envR.call("stockIn", { lines: [{ variant_id: rVid, qty: 3, unit_cost: 200 }] }, RT2);
+const rstSale = envR.call("completeSale", { client_ref: "r-2", lines: [{ variant_id: rVid, qty: 1 }], payments: [{ method: "cash", amount: 400 }] }, RT2);
+check("reset: bill numbers restart", rstSale.success && /\/00001$/.test(rstSale.data.sale.invoice_no), rstSale);
+check("reset: stock works after", envR.call("getCatalog", {}, RT2).data.variants.find((v) => v.id === rVid).stock_qty === 2);
+
 // ---- demo seed on a fresh env ----
 const env2 = createEnv();
 env2.ctx.setupSheets();

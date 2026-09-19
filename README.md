@@ -38,13 +38,15 @@ Staff phones (installed app)  ──►  Google Apps Script (backend)  ──►
         - Paste in the file's contents.
         - Delete the default `Code.gs`.
         - Then go to **Project Settings ⚙ → Show "appsscript.json"**, open `appsscript.json` and replace its contents with `backend/appsscript.json`.
-    - **Using clasp.** From the `backend/` folder:
-        ```bash
-        npm install -g @google/clasp
-        clasp login
-        cp .clasp.json.example .clasp.json   # then paste your Script ID (Project Settings → IDs)
-        clasp push
-        ```
+    - **Using clasp** (a command-line uploader; optional, handy for later updates):
+        1. Turn on the **Google Apps Script API** at [script.google.com/home/usersettings](https://script.google.com/home/usersettings), signed in as the shop account. Without it, clasp fails. After switching it on, allow a few minutes before deploying.
+        2. Install clasp and log in once per computer. In the browser, choose the **shop Google account**:
+            ```bash
+            npm install -g @google/clasp
+            clasp login
+            ```
+        3. In the `backend/` folder, copy `.clasp.json.example` to `.clasp.json` (`copy` on Windows, `cp` on Mac/Linux). Replace `PASTE_YOUR_SCRIPT_ID_HERE` with the **Script ID** from Apps Script → ⚙ **Project Settings → IDs**. This file stays on your computer and is never uploaded to GitHub.
+        4. From `backend/`, run `clasp push`. If it asks _"Manifest file has been updated. Do you want to push and overwrite?"_, answer **y**.
 4. Go back to the sheet and reload the page. A **Groovy POS** menu appears.
 5. Click **Groovy POS → 1. Setup / repair sheets**.
     - Google will ask for permission. Choose **Advanced → Go to project → Allow**.
@@ -167,8 +169,9 @@ If you have only one branch, none of this shows. The app works exactly like a si
 ## 5. Updating later
 
 - **Backend** (`.gs` files):
-    1. Paste in the new code, or run `clasp push`.
-    2. Go to **Deploy → Manage deployments → ✏️ Edit**, set **Version: New version**, and click **Deploy**.
+    1. Paste in the new code, or from `backend/` run `clasp push` (answer **y** if asked to overwrite the manifest).
+    2. Make the live app use it: go to **Deploy → Manage deployments → ✏️ Edit**, set **Version: New version**, and click **Deploy**.
+       With clasp instead: run `clasp deployments`, copy the ID of the web-app deployment (the one that is **not** `@HEAD`), then run `clasp redeploy <that ID> -d "v3 – what changed"`.
     3. Open the Sheet and run **Groovy POS → 1. Setup / repair sheets**. It adds any new tabs or columns the update needs; until you do, the app shows "The app was updated — run Setup".
     4. If Google asks for new permissions (for example after the nightly-email update), open the Apps Script editor, run any function (e.g. `emailDayCloseNow`) once and click **Allow**.
 
@@ -186,6 +189,11 @@ If you have only one branch, none of this shows. The app works exactly like a si
 - **Staff leaving:** deactivate them in Staff. Their past sales stay in the reports.
 - **Removing a product:** hide it with the eye icon on Edit product. Its bills and reports stay intact. An admin can **Delete** a product only if it was never sold, stocked in, adjusted or transferred, for example a duplicate added by mistake.
 - **Load demo data only into a test copy of the sheet:** **Groovy POS → 2. Load demo data**. It refuses to run if products already exist.
+- **Going live after testing:** first back up with **File → Make a copy**, then run **Groovy POS → 3. Reset test data (keep setup)…** and type `RESET`.
+    - It clears bills, payments, returns, held bills, expenses, customers, stock history, stock-ins and transfers. It sets all stock to 0 and restarts bill numbers at 00001.
+    - It keeps products and prices, categories, brands, staff, branches and shop settings.
+    - Everyone is logged out. Log in again on each phone, then enter your real stock with **Stock In**.
+    - This can’t be undone, which is why you make the copy first.
 - **Do a pilot day before going live.** Use a copy with demo data and try everything once:
     - the camera and the Bluetooth scanner;
     - the printer;
@@ -217,7 +225,7 @@ If you have only one branch, none of this shows. The app works exactly like a si
 
 ```
 backend/   Apps Script (.gs): api.gs (doPost + role ACL), auth, catalog, inventory, sales, reports…
-  dev/     mock-gas.js (in-memory Apps Script + Sheets), e2e.js (264 checks), server.js (local API)
+  dev/     mock-gas.js (in-memory Apps Script + Sheets), e2e.js (274 checks), server.js (local API)
 frontend/  Vite + React PWA: src/pages (screens), src/lib (api, GST cart maths, printing), src/hooks (scanners)
 ```
 
