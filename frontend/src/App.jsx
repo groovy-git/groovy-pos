@@ -3,6 +3,7 @@ import { Home as HomeIcon, ShoppingBag, Receipt, Boxes, Menu, Users, BarChart3, 
 import { useApp } from "./store";
 import { useRoute, navigate } from "./lib/router";
 import { Toasts, Spinner } from "./components/ui";
+import BusyOverlay from "./components/BusyOverlay";
 import { BranchChip, BranchPicker } from "./components/Branch";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
@@ -56,7 +57,7 @@ export default function App() {
   const { user, booting, rawCatalog, online, isManager, isAdmin, logout, settings, branchId } = useApp();
   const route = useRoute();
 
-  if (!user) return (<><Login /><Toasts /></>);
+  if (!user) return (<><Login /><Toasts /><BusyOverlay /></>);
   if (booting && !rawCatalog)
     return (
       <div className="login">
@@ -160,6 +161,7 @@ export default function App() {
       </nav>
       <BranchPicker />
       <Toasts />
+      <BusyOverlay />
     </div>
   );
 }

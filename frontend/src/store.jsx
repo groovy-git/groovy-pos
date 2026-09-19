@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api, clearBranch, clearToken, getBranch, getToken, setApiHandlers, setBranch, setToken } from "./lib/api";
 import { buildCatalog } from "./lib/catalog";
+import { runBusy } from "./lib/busy";
 
 const AppCtx = createContext(null);
 export const useApp = () => useContext(AppCtx);
@@ -182,31 +183,40 @@ export function AppProvider({ children }) {
     [bootstrap],
   );
 
-  const logout = useCallback(async () => {
-    try {
-      await api("logout");
-    } catch {
-      /* already logged out server-side */
-    }
-    logoutLocal();
-  }, [logoutLocal]);
+  // the screen is blocked until the phone is fully logged out
+  const logout = useCallback(
+    () =>
+      runBusy("Logging out…", async () => {
+        try {
+          await api("logout");
+        } catch {
+          /* already logged out server-side */
+        }
+        logoutLocal();
+      }),
+    [logoutLocal],
+  );
 
   const switchBranch = useCallback(
-    async (id) => {
-      const prev = branchRef.current;
-      applyBranch(id);
-      if (user) localStorage.setItem(pickedKey(user.id), "1");
-      setPickBranch(false);
-      try {
-        const d = await bootstrap();
-        const b = d.branches.find((x) => x.id === d.branch_id);
-        toast(b ? `Now working at ${b.name}` : "Showing all branches", "success", 2000);
-      } catch (e) {
-        applyBranch(prev);
-        toast(e.message, "error");
-      }
+    // the screen is blocked until the new branch's stock and settings have loaded
+    (id) => {
+      const target = branches.find((x) => x.id === Number(id));
+      return runBusy(target ? `Switching to ${target.name}…` : "Loading all branches…", async () => {
+        const prev = branchRef.current;
+        applyBranch(id);
+        if (user) localStorage.setItem(pickedKey(user.id), "1");
+        setPickBranch(false);
+        try {
+          const d = await bootstrap();
+          const b = d.branches.find((x) => x.id === d.branch_id);
+          toast(b ? `Now working at ${b.name}` : "Showing all branches", "success", 2000);
+        } catch (e) {
+          applyBranch(prev);
+          toast(e.message, "error");
+        }
+      });
     },
-    [applyBranch, bootstrap, toast, user],
+    [applyBranch, bootstrap, toast, user, branches],
   );
 
   const catalog = useMemo(() => buildCatalog(rawCatalog), [rawCatalog]);

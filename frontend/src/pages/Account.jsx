@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { runBusy } from "../lib/busy";
 import { ROLE_LABEL } from "../lib/format";
 import TopBar from "../components/TopBar";
 import { Avatar, Button, Field } from "../components/ui";
@@ -17,7 +18,7 @@ export default function Account() {
     if (pwd !== pwd2) return toast("New passwords don't match", "error");
     setBusy(true);
     try {
-      const r = await api("changePassword", { current_password: cur, new_password: pwd });
+      const r = await runBusy("Changing password…", () => api("changePassword", { current_password: cur, new_password: pwd }));
       toast(r.message + ". Other devices were logged out.", "success", 4000);
       setCur("");
       setPwd("");

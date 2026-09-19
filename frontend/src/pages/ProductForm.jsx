@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { ScanLine, Wand2, Plus, Trash2, Camera, EyeOff, Eye, ImageOff, Hash } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { runBusy } from "../lib/busy";
 import { goBack, useRoute } from "../lib/router";
 import { imageUrl } from "../lib/catalog";
 import { compressImage } from "../lib/files";
@@ -146,8 +147,11 @@ export default function ProductForm({ id }) {
           active: v.active,
         })),
       };
-      const r = await api("saveProduct", payload);
-      await refreshCatalog();
+      const r = await runBusy("Saving product…", async () => {
+        const res = await api("saveProduct", payload);
+        await refreshCatalog();
+        return res;
+      });
       toast(r.message, "success");
       goBack("stock");
     } catch (e) {
@@ -161,8 +165,11 @@ export default function ProductForm({ id }) {
     const hide = existing.active;
     if (hide && !(await confirm({ title: "Hide this product?", text: "It won't show on the Sell screen. Sales history is kept. You can show it again any time.", okText: "Hide" }))) return;
     try {
-      const r = await api("toggleProduct", { id: existing.id });
-      await refreshCatalog();
+      const r = await runBusy(existing.active ? "Hiding product…" : "Showing product…", async () => {
+        const res = await api("toggleProduct", { id: existing.id });
+        await refreshCatalog();
+        return res;
+      });
       toast(r.message, "success");
       goBack("stock");
     } catch (e) {
@@ -180,7 +187,7 @@ export default function ProductForm({ id }) {
     });
     if (!ok) return;
     try {
-      const r = await api("deleteProduct", { id: existing.id });
+      const r = await runBusy("Deleting product…", () => api("deleteProduct", { id: existing.id }));
       goBack("stock");
       refreshCatalog();
       toast(r.message, "success");

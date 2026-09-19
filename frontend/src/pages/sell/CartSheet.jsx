@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Trash2, PauseCircle, Tag } from "lucide-react";
 import { useApp } from "../../store";
 import { api } from "../../lib/api";
+import { runBusy } from "../../lib/busy";
 import { removeLine, setLine } from "../../lib/cart";
 import { inr, r2 } from "../../lib/format";
 import { Button, MoneyInput, Sheet, Stepper, Thumb, useConfirm } from "../../components/ui";
@@ -18,7 +19,7 @@ export default function CartSheet({ open, onClose, preview, onCheckout, onHeld }
     try {
       const c = cart.customer || {};
       const label = c.name || c.phone || `Bill ${new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}`;
-      await api("holdBill", { label, cart: { ...cart, client_ref: null } });
+      await runBusy("Holding bill…", () => api("holdBill", { label, cart: { ...cart, client_ref: null } }));
       clearCart();
       toast("Bill held — find it under the clock icon", "success");
       onHeld();

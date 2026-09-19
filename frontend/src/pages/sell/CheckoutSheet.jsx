@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, X, UserCheck, Building2 } from "lucide-react";
 import { useApp } from "../../store";
 import { api } from "../../lib/api";
+import { runBusy } from "../../lib/busy";
 import { newClientRef } from "../../lib/cart";
 import { inr, r2, METHOD_LABEL } from "../../lib/format";
 import { Button, Field, MoneyInput, Seg, Sheet, Spinner } from "../../components/ui";
@@ -108,7 +109,7 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
     if (!cart.client_ref) setCart((c) => ({ ...c, client_ref: ref }));
     setBusy(true);
     try {
-      const r = await api("completeSale", {
+      const r = await runBusy("Saving sale…", () => api("completeSale", {
         client_ref: ref,
         lines: cart.lines.filter((l) => catalog.byVariant.has(l.variant_id)).map((l) => ({ variant_id: l.variant_id, qty: l.qty, discount: l.discount || 0 })),
         bill_disc: cart.bill_disc || 0,
@@ -118,7 +119,7 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
         notes: cart.notes || "",
         held_id: cart.held_id || null,
         gst_hidden: !!cart.gst_hidden,
-      });
+      }));
       const d = r.data;
       patchStock(
         d.items.map((i) => {

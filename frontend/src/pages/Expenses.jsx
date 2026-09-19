@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Wallet, Trash2 } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { runBusy } from "../lib/busy";
 import { inr, istDate, monthStart, relDay, METHOD_LABEL } from "../lib/format";
 import TopBar from "../components/TopBar";
 import { Button, Chips, Empty, Field, MoneyInput, Seg, Sheet, SkeletonList, useConfirm } from "../components/ui";
@@ -103,7 +104,7 @@ function ExpenseSheet({ e, onClose, onSaved }) {
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api("saveExpense", { ...f, category: f.category || cats[cats.length - 1] });
+      const r = await runBusy("Saving expense…", () => api("saveExpense", { ...f, category: f.category || cats[cats.length - 1] }));
       toast(r.message, "success");
       onSaved();
     } catch (ex) {
@@ -115,7 +116,7 @@ function ExpenseSheet({ e, onClose, onSaved }) {
   const del = async () => {
     if (!(await confirm({ title: "Delete expense?", text: `${e.title} · ${inr(e.amount)}`, okText: "Delete", danger: true }))) return;
     try {
-      await api("deleteExpense", { id: e.id });
+      await runBusy("Deleting expense…", () => api("deleteExpense", { id: e.id }));
       toast("Expense deleted", "success");
       onSaved();
     } catch (ex) {

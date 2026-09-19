@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Mail, Store } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { runBusy } from "../lib/busy";
 import TopBar from "../components/TopBar";
 import { Button, Chips, Field, Seg, Sheet, SkeletonList, useConfirm } from "../components/ui";
 
@@ -19,7 +20,7 @@ export default function SettingsPage() {
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api("saveSettings", { settings: f });
+      const r = await runBusy("Saving settings…", () => api("saveSettings", { settings: f }));
       setSettings(r.data);
       setF((cur) => ({ ...cur, ...r.data })); // server may normalise values (e.g. email list)
       toast(r.message, "success", 4000);
@@ -239,7 +240,7 @@ function CatSheet({ c, onClose, onSaved }) {
     if (!(await confirm({ title: `Delete ${c.name}?`, text: "This cannot be undone.", okText: "Delete", danger: true }))) return;
     setBusy(true);
     try {
-      const r = await api("deleteCategory", { id: c.id });
+      const r = await runBusy("Deleting category…", () => api("deleteCategory", { id: c.id }));
       toast(r.message, "success");
       await onSaved();
       onClose();
@@ -252,7 +253,7 @@ function CatSheet({ c, onClose, onSaved }) {
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api("saveCategory", f);
+      const r = await runBusy("Saving category…", () => api("saveCategory", f));
       toast(r.message, "success");
       await onSaved();
       onClose();
@@ -305,7 +306,7 @@ function BrandSheet({ b, onClose, onSaved }) {
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api("saveBrand", { id: b.id, name, active });
+      const r = await runBusy("Saving brand…", () => api("saveBrand", { id: b.id, name, active }));
       toast(r.message, "success");
       await onSaved();
       onClose();
@@ -395,7 +396,7 @@ function BranchSheet({ b, prefix, onClose, onSaved }) {
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api("saveBranch", { ...f, code });
+      const r = await runBusy("Saving branch…", () => api("saveBranch", { ...f, code }));
       toast(r.message, "success");
       await onSaved();
     } catch (e) {

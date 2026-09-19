@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Trash2, ArrowRightLeft, ScanLine, Send } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { runBusy } from "../lib/busy";
 import { navigate } from "../lib/router";
 import { searchItems, lookupBarcode } from "../lib/catalog";
 import { r3, qtyLabel } from "../lib/format";
@@ -74,7 +75,7 @@ export default function Transfer() {
     if (!to) return toast("Choose the branch to send to", "error");
     setBusy(true);
     try {
-      const r = await api("transferStock", { to_branch_id: to, note: draft.note, lines: lines.map((l) => ({ variant_id: l.variant_id, qty: l.qty })) });
+      const r = await runBusy("Transferring stock…", () => api("transferStock", { to_branch_id: to, note: draft.note, lines: lines.map((l) => ({ variant_id: l.variant_id, qty: l.qty })) }));
       patchStock(r.data.stock);
       sessionStorage.removeItem(KEY);
       setDraftState(emptyDraft);

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, UserCog } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { runBusy } from "../lib/busy";
 import { ROLE_LABEL } from "../lib/format";
 import TopBar from "../components/TopBar";
 import { Avatar, Button, Empty, Field, Seg, Sheet, SkeletonList, useConfirm } from "../components/ui";
@@ -88,7 +89,7 @@ function UserSheet({ u, onClose, onSaved }) {
   const run = async (action, payload, msg) => {
     setBusy(true);
     try {
-      const r = await api(action, payload);
+      const r = await runBusy(action === "deleteUser" ? "Deleting staff…" : "Saving staff…", () => api(action, payload));
       toast(msg || r.message, "success");
       onSaved();
     } catch (e) {

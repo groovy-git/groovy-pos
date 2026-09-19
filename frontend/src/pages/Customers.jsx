@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Users, Phone, MessageCircle, Plus, Pencil } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { runBusy } from "../lib/busy";
 import { navigate } from "../lib/router";
 import { inr, relDay, fmtDateTime } from "../lib/format";
 import TopBar from "../components/TopBar";
@@ -147,7 +148,7 @@ function EditSheet({ c, onClose, onSaved }) {
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api("saveCustomer", f);
+      const r = await runBusy("Saving customer…", () => api("saveCustomer", f));
       toast(r.message, "success");
       onSaved(r.data);
     } catch (e) {

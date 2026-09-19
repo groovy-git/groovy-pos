@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { markOwnBack } from "../lib/busy";
 
 // Android back button / swipe-back closes the top-most open sheet instead of leaving the page.
 // Each open sheet owns one history entry tagged with its depth. Closing a sheet by button
@@ -42,7 +43,10 @@ export function useBackClose(open, onClose) {
       if (entry.popped) return;
       const timer = setTimeout(() => {
         pending = null;
-        if (window.history.state && window.history.state.gpSheet === depth) window.history.back();
+        if (window.history.state && window.history.state.gpSheet === depth) {
+          markOwnBack();
+          window.history.back();
+        }
       }, 0);
       pending = { depth, timer };
     };

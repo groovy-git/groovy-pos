@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Trash2, PackagePlus, ScanLine } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { runBusy } from "../lib/busy";
 import { navigate } from "../lib/router";
 import { searchItems, lookupBarcode, STOCKIN_PENDING as PENDING } from "../lib/catalog";
 import { inr, r2, r3, qtyLabel } from "../lib/format";
@@ -100,11 +101,11 @@ export default function StockIn() {
     if (lines.some((l) => !(Number(l.qty) > 0))) return toast("Every item needs a quantity above 0", "error");
     setBusy(true);
     try {
-      const r = await api("stockIn", {
+      const r = await runBusy("Saving stock in…", () => api("stockIn", {
         supplier_note: draft.supplier_note,
         bill_ref: draft.bill_ref,
         lines: lines.map((l) => ({ variant_id: l.variant_id, qty: Number(l.qty), unit_cost: Number(l.unit_cost) || 0 })),
-      });
+      }));
       patchStock(r.data.stock);
       sessionStorage.removeItem(KEY);
       setDraftState({ lines: [], supplier_note: "", bill_ref: "" });

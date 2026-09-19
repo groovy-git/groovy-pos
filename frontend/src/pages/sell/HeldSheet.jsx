@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Clock, Trash2 } from "lucide-react";
 import { useApp } from "../../store";
 import { api } from "../../lib/api";
+import { runBusy } from "../../lib/busy";
 import { fmtDateTime } from "../../lib/format";
 import { Empty, Sheet, SkeletonList, useConfirm } from "../../components/ui";
 
@@ -32,7 +33,7 @@ export default function HeldSheet({ open, onClose }) {
   const remove = async (h) => {
     if (!(await confirm({ title: "Delete held bill?", text: h.label, okText: "Delete", danger: true }))) return;
     try {
-      await api("deleteHeld", { id: h.id });
+      await runBusy("Deleting held bill…", () => api("deleteHeld", { id: h.id }));
       setList((l) => l.filter((x) => x.id !== h.id));
     } catch (e) {
       toast(e.message, "error");

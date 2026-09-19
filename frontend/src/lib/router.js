@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { markOwnBack } from "./busy";
 
 // Hash routing (#/sell, #/sales/12) — works on any GitHub Pages sub-path and offline.
 function current() {
@@ -27,6 +28,9 @@ export function navigate(path, { replace = false } = {}) {
 }
 
 export function goBack(fallback = "home") {
-  if (window.history.length > 1) window.history.back();
+  if (window.history.length > 1) {
+    markOwnBack();
+    window.history.back();
+  }
   else navigate(fallback, { replace: true });
 }

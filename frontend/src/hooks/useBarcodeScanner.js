@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { isBusy } from "../lib/busy";
 
 /**
  * Bluetooth/USB barcode scanners act like a keyboard that types very fast and ends with Enter.
@@ -18,6 +19,7 @@ export function useBarcodeScanner(onScan, enabled = true) {
     let last = 0;
     let gaps = [];
     const onKey = (e) => {
+      if (isBusy()) return; // nothing may be added while a save / branch switch is running
       const t = e.target;
       if (t && t.dataset && t.dataset.scanIgnore !== undefined) return;
       const now = performance.now();

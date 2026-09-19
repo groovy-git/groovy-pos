@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, PackagePlus, Upload, Pencil, History, SlidersHorizontal, Boxes, Download, ArrowRightLeft } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { runBusy } from "../lib/busy";
 import { navigate, useRoute } from "../lib/router";
 import { searchItems, lookupBarcode } from "../lib/catalog";
 import { inr, fmtDateTime, qtyLabel, r3, plural } from "../lib/format";
@@ -254,7 +255,7 @@ function AdjustSheet({ open, item, onClose }) {
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api("adjustStock", { variant_id: item.id, mode, qty: n, reason: mode === "set" ? "count" : reason, note });
+      const r = await runBusy("Saving stock change…", () => api("adjustStock", { variant_id: item.id, mode, qty: n, reason: mode === "set" ? "count" : reason, note }));
       patchStock([{ id: item.id, stock_qty: r.data.stock_qty }]);
       toast(r.message, "success");
       onClose();
@@ -344,7 +345,7 @@ function ImportSheet({ open, onClose }) {
   const run = async () => {
     setBusy(true);
     try {
-      const r = await api("importCatalog", { rows });
+      const r = await runBusy("Importing products…", () => api("importCatalog", { rows }));
       setResult(r.data);
       toast(r.message, r.data.errors.length ? "warn" : "success", 4000);
       refreshCatalog();

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { MessageCircle, Printer, FileText, Undo2, Ban, Share2, CloudUpload, CheckCircle2 } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { runBusy } from "../lib/busy";
 import { inr, fmtDateTime, qtyLabel, istDate, METHOD_LABEL, r2 } from "../lib/format";
 import { a4InvoiceHtml, billText, printHtml, receiptHtml, whatsappLink } from "../lib/print";
 import TopBar from "../components/TopBar";
@@ -215,13 +216,13 @@ function ReturnSheet({ open, onClose, detail, onDone }) {
   const submit = async () => {
     setBusy(true);
     try {
-      const r = await api("returnItems", {
+      const r = await runBusy("Saving return…", () => api("returnItems", {
         sale_id: detail.sale.id,
         items: detail.items.filter((i) => qty[i.id] > 0).map((i) => ({ sale_item_id: i.id, qty: qty[i.id], restock: restock[i.id] !== false })),
         refund_method: method,
         reason,
         override: late && isAdmin,
-      });
+      }));
       toast(r.message, "success", 4000);
       onDone(r);
       onClose();
@@ -285,7 +286,7 @@ function VoidSheet({ open, onClose, sale, onDone }) {
   const submit = async () => {
     setBusy(true);
     try {
-      const r = await api("voidSale", { id: sale.id, reason });
+      const r = await runBusy("Voiding bill…", () => api("voidSale", { id: sale.id, reason }));
       toast(r.message, "success");
       onDone(r);
       onClose();
