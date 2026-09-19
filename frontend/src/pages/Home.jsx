@@ -3,10 +3,13 @@ import { ShoppingBag, AlertTriangle, Trophy, RefreshCw, ChevronRight } from "luc
 import { useApp } from "../store";
 import { api } from "../lib/api";
 import { navigate } from "../lib/router";
-import { inr, fmtDate, istDate, METHOD_LABEL, plural } from "../lib/format";
+import { inr, fmtDate, istDate, METHOD_LABEL, plural, ROLE_LABEL } from "../lib/format";
 import TopBar from "../components/TopBar";
 import { Seg, SkeletonList } from "../components/ui";
 import BarChart from "../components/BarChart";
+
+// role pill next to the greeting — brown for admin, gold for manager, cream for salesman
+const ROLE_TONE = { admin: "dark", manager: "gold", salesman: "" };
 
 export default function Home() {
   const { user, isManager, toast, settings, branchId, isAllBranches } = useApp();
@@ -56,8 +59,11 @@ export default function Home() {
       <div className="page">
         <div className="row between mb">
           <div>
-            <h2>
-              {greet}, {user.name.split(" ")[0]}
+            <h2 className="row gap-s" style={{ flexWrap: "wrap", alignItems: "center" }}>
+              <span>
+                {greet}, {user.name.split(" ")[0]}
+              </span>
+              <span className={"badge " + (ROLE_TONE[user.role] || "")}>{ROLE_LABEL[user.role] || user.role}</span>
             </h2>
             <div className="small muted">{fmtDate(istDate())}</div>
           </div>

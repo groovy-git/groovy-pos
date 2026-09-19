@@ -88,7 +88,16 @@ export default function ProductForm({ id }) {
     quick.current.pending[it.id] = (quick.current.pending[it.id] || 0) + 1;
     flushQuick();
   };
-  useBarcodeScanner((code) => quickStockIn(code), !existing && scanFor === null);
+  useBarcodeScanner((code, target) => {
+    if (!lookupBarcode(catalog, code)) return;
+    // the scanner also typed the code into whatever box had focus (e.g. Product name) — take it back out
+    if (target && target.tagName === "INPUT" && typeof target.value === "string" && target.value.endsWith(code)) {
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setValue.call(target, target.value.slice(0, -code.length));
+      target.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    quickStockIn(code);
+  }, !existing && scanFor === null);
 
   const set = (patch) => setP((x) => ({ ...x, ...patch }));
   const setV = (i, patch) => setVars((vs) => vs.map((v, j) => (j === i ? { ...v, ...patch } : v)));
