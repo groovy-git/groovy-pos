@@ -361,6 +361,9 @@ function ImportSheet({ open, onClose }) {
       <p className="small muted" style={{ marginTop: 0 }}>
         One row per size. Rows with the same brand + product become sizes of one product. Leave barcode empty and generate codes later if needed. For loose attar use sale_type
         “loose” and prices per ml.
+        <br />
+        Uploading again is safe: existing sizes (same barcode, or same brand + product + size) get their prices updated — blank cells keep the current value — and are
+        never duplicated. Opening stock is only used for new sizes; use Stock In for more stock.
       </p>
       <button className="btn secondary block" onClick={() => downloadText("groovy-products-template.csv", IMPORT_TEMPLATE)}>
         <Download size={18} /> Download template
@@ -378,8 +381,13 @@ function ImportSheet({ open, onClose }) {
       {result && (
         <div className="card">
           <b>
-            Added {result.variants} sizes in {result.products} new products.
+            Added {result.variants} sizes in {result.products} new products · Updated {result.updated || 0} · {result.unchanged || 0} unchanged
           </b>
+          {result.stock_ignored > 0 && (
+            <div className="small muted mt">
+              Opening stock was ignored for {result.stock_ignored} existing {result.stock_ignored === 1 ? "size" : "sizes"} — use Stock In to add stock.
+            </div>
+          )}
           {result.errors.length > 0 && (
             <>
               <div className="bad-text small mt">{result.errors.length} rows skipped:</div>

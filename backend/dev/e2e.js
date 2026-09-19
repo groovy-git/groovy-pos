@@ -249,6 +249,36 @@ const imp = ok(call("importCatalog", { rows: [
 ] }, T), "import");
 check("import grouped sizes", imp.products === 1 && imp.variants === 2, imp);
 check("import errors reported", imp.errors.length === 2, imp.errors);
+// re-upload = update, never duplicate
+const cdnRows = () => [
+    { brand: "Armaf", product: "Club De Nuit", category: "Eau De Parfum", size_label: "105ml", mrp: 3300, sell_price: 2499, cost: 1800, opening_stock: 3, barcode: "6294015152225" },
+    { brand: "Armaf", product: "Club De Nuit", category: "Eau De Parfum", size_label: "30ml", mrp: 1200, sell_price: 899, opening_stock: 2 },
+];
+const cdnSizes = () => call("getCatalog", {}, T).data.variants.filter((v) => /^(105ml|30ml)$/.test(v.size_label) && call("getCatalog", {}, T).data.products.find((x) => x.id === v.product_id).name === "Club De Nuit");
+const cdn105 = () => cdnSizes().find((v) => v.size_label === "105ml");
+const cdn30 = () => cdnSizes().find((v) => v.size_label === "30ml");
+const stock105 = cdn105().stock_qty;
+const reImp = ok(call("importCatalog", { rows: cdnRows() }, T), "re-import same file");
+check("re-import: nothing added or updated", reImp.variants === 0 && reImp.products === 0 && reImp.updated === 0 && reImp.unchanged === 2, reImp);
+check("re-import: no duplicate sizes", cdnSizes().length === 2, cdnSizes().map((v) => v.size_label));
+check("re-import: opening stock ignored + reported", cdn105().stock_qty === stock105 && reImp.stock_ignored === 2, reImp);
+const impUpd = ok(call("importCatalog", { rows: [{ brand: "armaf", product: "club de nuit", size_label: "105 ML", sell_price: 2399, opening_stock: 9 }] }, T), "import price change");
+check("import update: price saved", impUpd.updated === 1 && cdn105().sell_price === 2399, impUpd);
+check("import update: blank cells kept", cdn105().mrp === 3300 && cdn105().stock_qty === stock105);
+ok(call("importCatalog", { rows: [{ brand: "Armaf", product: "Club De Nuit", size_label: "30ml", barcode: "6294015100001" }] }, T), "import adds barcode");
+check("import update: barcode set on existing size", cdn30().barcode === "6294015100001" && cdnSizes().length === 2);
+const clash2 = ok(call("importCatalog", { rows: [
+    { brand: "Armaf", product: "Club De Nuit", size_label: "30ml", barcode: "6294015199999" },
+    { brand: "Someone", product: "Else", category: "Eau De Parfum", size_label: "10ml", sell_price: 100, barcode: "6294015152225" },
+    { brand: "Armaf", product: "Club De Nuit", size_label: "30ml", sale_type: "loose" },
+    { brand: "Armaf", product: "Club De Nuit", category: "Eau De Parfum", size_label: "200ml", sell_price: 3999 },
+    { brand: "Armaf", product: "Club De Nuit", category: "Eau De Parfum", size_label: "200ml", sell_price: 3999 },
+] }, T), "import conflicts");
+const impMsgs = clash2.errors.map((e) => e.row + ":" + e.message).join(" | ");
+check("import: size already has other barcode", /2:Size 30ml already has barcode/.test(impMsgs), impMsgs);
+check("import: barcode of another product", /3:Barcode 6294015152225 belongs to Armaf Club De Nuit/.test(impMsgs), impMsgs);
+check("import: packed/loose change refused", /4:Can't change packed\/loose/.test(impMsgs), impMsgs);
+check("import: new size added once, repeat refused", clash2.variants === 1 && /6:Repeats an earlier row/.test(impMsgs), clash2);
 
 // ---- setup upgrades an older sheet that lacks a newly added trailing column ----
 const salesSh = env.ss.getSheetByName("Sales");

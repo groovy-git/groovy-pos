@@ -164,6 +164,27 @@ function updateRows_(name, objs) {
     });
 }
 
+/**
+ * Write back many full records in ONE call: the span from the first to the last changed row is
+ * rewritten from the (fresh, locked) table cache. Blank rows inside the span stay blank.
+ */
+function updateRowsBatch_(name, objs) {
+    if (!objs.length) return;
+    const t = readTable_(name);
+    const byRow = {};
+    t.rows.forEach((o) => (byRow[o._r] = o));
+    objs.forEach((o) => {
+        if (!o._r) throw new Error("updateRowsBatch_ needs _r");
+        byRow[o._r] = o;
+    });
+    const first = Math.min.apply(null, objs.map((o) => o._r));
+    const last = Math.max.apply(null, objs.map((o) => o._r));
+    const blank = t.keys.map(() => "");
+    const vals = [];
+    for (let r = first; r <= last; r++) vals.push(byRow[r] ? rowArray_(name, byRow[r]) : blank);
+    t.sh.getRange(first, 1, vals.length, t.keys.length).setValues(vals);
+}
+
 /** Update single columns for many records: [{_r, ...fields}] — one call per cell. */
 function updateFields_(name, obj, fields) {
     const t = readTable_(name);

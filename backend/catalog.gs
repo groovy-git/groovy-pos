@@ -334,8 +334,10 @@ function apiUploadImage_(p, ctx) {
 
 /**
  * rows: [{brand, category, product, gender, sale_type, size_label, size_ml, barcode,
- *         mrp, sell_price, cost, opening_stock, hsn, gst_rate, reorder_level}]
+ *         mrp, sell_price, cost, opening_stock, hsn, gst_rate, reorder_level, image, sku}]
  * Rows with the same brand+product become sizes of one product.
+ * A row matching an existing size (by barcode, else brand+product+size) UPDATES it — blank cells keep
+ * the current value and stock is never changed — so re-uploading a file never creates duplicates.
  */
 function apiImportCatalog_(p, ctx) {
     const input = p.rows || [];
@@ -346,42 +348,131 @@ function apiImportCatalog_(p, ctx) {
     return withLock_(() => {
         const now = nowStr_();
         const errors = [];
-        const cats = rows_("Categories");
+        const blank = (x) => x === undefined || x === null || String(x).trim() === "";
+        const sizeKey = (s) => String(s || "").toLowerCase().replace(/\s+/g, "");
+
         const catByName = {};
-        cats.forEach((c) => (catByName[c.name.toLowerCase()] = c));
-        const prods = rows_("Products");
+        rows_("Categories").forEach((c) => (catByName[c.name.toLowerCase()] = c));
         const brandsById = indexBy_(rows_("Brands"), "id");
+        const brandOf = (x) => (brandsById[x.brand_id] ? brandsById[x.brand_id].name : "");
         const prodKey = (brandName, prodName) => (brandName || "").toLowerCase() + "|" + prodName.toLowerCase();
+        const prodById = {};
         const prodByKey = {};
-        prods.forEach((x) => (prodByKey[prodKey(brandsById[x.brand_id] ? brandsById[x.brand_id].name : "", x.name)] = x));
-        const usedCodes = {};
+        rows_("Products").forEach((x) => {
+            prodById[x.id] = x;
+            prodByKey[prodKey(brandOf(x), x.name)] = x;
+        });
+        const varByCode = {};
+        const varsByProd = {};
         rows_("Variants").forEach((v) => {
-            if (v.barcode) usedCodes[v.barcode] = true;
+            if (v.barcode) varByCode[v.barcode] = v;
+            (varsByProd[v.product_id] = varsByProd[v.product_id] || []).push(v);
         });
 
         const newProds = [];
         const newVars = [];
         const moves = [];
+        const newCats = [];
+        const changedVars = [];
+        const changedProds = [];
+        let updated = 0;
+        let unchanged = 0;
+        let stockIgnored = 0;
         let pid = nextId_("Products");
         let vid = nextId_("Variants");
         let mid = nextId_("Stock_Movements");
         let catId = nextId_("Categories");
-        const newCats = [];
+
+        const catFor = (name, r) => {
+            let cat = catByName[name.toLowerCase()];
+            if (!cat) {
+                cat = { id: catId++, name, default_hsn: str_(r.hsn), default_gst: num_(r.gst_rate, 18), sort: 99, active: 1, created_at: now };
+                newCats.push(cat);
+                catByName[name.toLowerCase()] = cat;
+            }
+            return cat;
+        };
+        const gstOf = (r, fallback) => {
+            const g = blank(r.gst_rate) ? fallback : num_(r.gst_rate);
+            if (GST_RATES.indexOf(g) < 0) fail_("Invalid GST rate " + r.gst_rate);
+            return g;
+        };
+        const mark = (list, o) => list.indexOf(o) < 0 && list.push(o);
 
         input.forEach((r, i) => {
             const rowNo = i + 2; // header is row 1
             try {
                 const prodName = str_(r.product);
                 if (!prodName) fail_("Product name missing");
-                const catName = str_(r.category);
-                if (!catName) fail_("Category missing");
-                let cat = catByName[catName.toLowerCase()];
-                if (!cat) {
-                    cat = { id: catId++, name: catName, default_hsn: str_(r.hsn), default_gst: num_(r.gst_rate, 18), sort: 99, active: 1, created_at: now };
-                    newCats.push(cat);
-                    catByName[catName.toLowerCase()] = cat;
+                const key = prodKey(str_(r.brand), prodName);
+                const code = normBarcode_(r.barcode);
+                let prod = prodByKey[key] || null;
+                let match = null;
+
+                // 1. a known barcode identifies the size — but only for the product the row names
+                if (code && varByCode[code]) {
+                    const v0 = varByCode[code];
+                    const p0 = prodById[v0.product_id];
+                    if (!p0 || prodKey(brandOf(p0), p0.name) !== key)
+                        fail_("Barcode " + code + " belongs to " + (p0 ? (brandOf(p0) + " " + p0.name).trim() : "another item") + " " + v0.size_label);
+                    prod = p0;
+                    match = v0;
                 }
-                const saleType = str_(r.sale_type).toLowerCase() === "loose" ? "loose" : "packed";
+                // 2. same brand + product → same size label (a loose product has one size)
+                if (!match && prod) {
+                    const sizes = varsByProd[prod.id] || [];
+                    match = prod.sale_type === "loose" ? sizes[0] || null : sizes.find((v) => sizeKey(v.size_label) === sizeKey(r.size_label)) || null;
+                }
+                if (prod && !blank(r.sale_type) && (str_(r.sale_type).toLowerCase() === "loose" ? "loose" : "packed") !== prod.sale_type)
+                    fail_("Can't change packed/loose by import (" + prodName + " is " + prod.sale_type + ")");
+
+                if (match) {
+                    if (match._new) fail_("Repeats an earlier row (same product and size)");
+                    if (code && match.barcode && code !== match.barcode) fail_("Size " + match.size_label + " already has barcode " + match.barcode);
+                    // blank cells keep the current value; cleanVariant_ validates the result
+                    const v = cleanVariant_(
+                        {
+                            size_label: match.size_label,
+                            size_ml: blank(r.size_ml) ? match.size_ml : r.size_ml,
+                            barcode: code || match.barcode,
+                            mrp: blank(r.mrp) ? match.mrp : r.mrp,
+                            sell_price: blank(r.sell_price) ? match.sell_price : r.sell_price,
+                            reorder_level: blank(r.reorder_level) ? match.reorder_level : r.reorder_level,
+                            cost: blank(r.cost) ? 0 : r.cost,
+                        },
+                        prod.sale_type,
+                    );
+                    const nextVar = {
+                        size_ml: v.size_ml, barcode: v.barcode, mrp: v.mrp, sell_price: v.sell_price,
+                        reorder_level: v.reorder_level, avg_cost: v.cost > 0 ? v.cost : match.avg_cost,
+                    };
+                    const nextProd = {};
+                    if (!prod._new) {
+                        if (!blank(r.category)) nextProd.category_id = catFor(str_(r.category), r).id;
+                        if (!blank(r.gender)) nextProd.gender = str_(r.gender);
+                        if (!blank(r.hsn)) nextProd.hsn = str_(r.hsn);
+                        if (!blank(r.gst_rate)) nextProd.gst_rate = gstOf(r, prod.gst_rate);
+                        if (!blank(r.image)) nextProd.image = str_(r.image);
+                    }
+                    const varDiff = Object.keys(nextVar).some((k) => String(nextVar[k]) !== String(match[k]));
+                    const prodDiff = Object.keys(nextProd).some((k) => String(nextProd[k]) !== String(prod[k]));
+                    if (varDiff) {
+                        Object.assign(match, nextVar, { updated_at: now });
+                        mark(changedVars, match);
+                        if (v.barcode) varByCode[v.barcode] = match;
+                    }
+                    if (prodDiff) {
+                        Object.assign(prod, nextProd, { updated_at: now });
+                        mark(changedProds, prod);
+                    }
+                    if (varDiff || prodDiff) updated++;
+                    else unchanged++;
+                    if (num_(r.opening_stock) > 0) stockIgnored++; // stock only via Stock In / Adjust
+                    return;
+                }
+
+                // 3. new size (and maybe new product)
+                const saleType = prod ? prod.sale_type : str_(r.sale_type).toLowerCase() === "loose" ? "loose" : "packed";
                 const v = cleanVariant_(
                     {
                         size_label: r.size_label, size_ml: r.size_ml, barcode: r.barcode, mrp: r.mrp,
@@ -389,30 +480,29 @@ function apiImportCatalog_(p, ctx) {
                     },
                     saleType,
                 );
-                if (v.barcode && usedCodes[v.barcode]) fail_("Barcode " + v.barcode + " already exists");
-                const gst = r.gst_rate === "" || r.gst_rate === undefined ? cat.default_gst : num_(r.gst_rate);
-                if (GST_RATES.indexOf(gst) < 0) fail_("Invalid GST rate " + r.gst_rate);
-
-                const brandName = str_(r.brand);
-                const key = prodKey(brandName, prodName);
-                let prod = prodByKey[key];
                 if (!prod) {
+                    const catName = str_(r.category);
+                    if (!catName) fail_("Category missing");
+                    const cat = catFor(catName, r);
                     prod = {
-                        id: pid++, name: prodName, brand_id: ensureBrand_(brandName), category_id: cat.id,
+                        id: pid++, name: prodName, brand_id: ensureBrand_(str_(r.brand)), category_id: cat.id,
                         gender: str_(r.gender), sale_type: saleType, hsn: str_(r.hsn) || cat.default_hsn,
-                        gst_rate: gst, image: str_(r.image), description: "", active: 1,
-                        created_by: ctx.user.id, created_at: now, updated_at: now,
+                        gst_rate: gstOf(r, cat.default_gst), image: str_(r.image), description: "", active: 1,
+                        created_by: ctx.user.id, created_at: now, updated_at: now, _new: true,
                     };
                     newProds.push(prod);
                     prodByKey[key] = prod;
+                    prodById[prod.id] = prod;
+                    brandsById[prod.brand_id] = brandsById[prod.brand_id] || { id: prod.brand_id, name: str_(r.brand) };
                 }
                 const row = {
                     id: vid++, product_id: prod.id, sku: str_(r.sku), barcode: v.barcode, size_label: v.size_label,
                     size_ml: v.size_ml, unit: v.unit, mrp: v.mrp, sell_price: v.sell_price, avg_cost: v.cost,
-                    stock_qty: 0, reorder_level: v.reorder_level, active: 1, created_at: now, updated_at: now,
+                    stock_qty: 0, reorder_level: v.reorder_level, active: 1, created_at: now, updated_at: now, _new: true,
                 };
                 newVars.push(row);
-                if (v.barcode) usedCodes[v.barcode] = true;
+                (varsByProd[prod.id] = varsByProd[prod.id] || []).push(row);
+                if (v.barcode) varByCode[v.barcode] = row;
                 if (v.opening_stock > 0)
                     moves.push({
                         id: mid++, variant_id: row.id, type: "opening", qty: v.opening_stock, unit_cost: v.cost,
@@ -424,16 +514,22 @@ function apiImportCatalog_(p, ctx) {
             }
         });
 
+        [newProds, newVars].forEach((list) => list.forEach((o) => delete o._new));
         appendRows_("Categories", newCats);
         appendRows_("Products", newProds);
         appendRows_("Variants", newVars);
+        updateRowsBatch_("Products", changedProds);
+        updateRowsBatch_("Variants", changedVars);
         appendRows_("Stock_Movements", moves);
         addStock_(moves.map((m) => ({ variant_id: m.variant_id, branch_id: ctx.branch_id, delta: m.qty })));
-        if (newVars.length) bumpCatalogVersion_();
-        log_(ctx, "IMPORT", "Products", "", newProds.length + " products, " + newVars.length + " sizes, " + errors.length + " errors");
+        if (newVars.length || updated || newCats.length) bumpCatalogVersion_();
+        const summary =
+            "Added " + newVars.length + " sizes (" + newProds.length + " new products), updated " + updated + ", " + unchanged + " unchanged" +
+            (errors.length ? ", " + errors.length + " rows skipped" : "");
+        log_(ctx, "IMPORT", "Products", "", summary);
         return {
-            message: "Imported " + newVars.length + " sizes (" + newProds.length + " new products)" + (errors.length ? ", " + errors.length + " rows skipped" : ""),
-            data: { products: newProds.length, variants: newVars.length, errors },
+            message: summary,
+            data: { products: newProds.length, variants: newVars.length, updated, unchanged, stock_ignored: stockIgnored, errors },
         };
     });
 }

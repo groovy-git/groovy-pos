@@ -114,7 +114,11 @@ The app prints an **80 mm receipt** or an **A4 tax invoice** using the phone's o
     - You can add your own categories (e.g. _Bakhoor_) and hide ones you don't sell. A category can be deleted only if no product uses it.
 2. Go to **More → Staff** and add managers and salesmen, each with their own email and password.
 3. Add products. Either:
-    - **Stock → Import**: download the template, fill it in Excel or Google Sheets, then upload it as CSV; or
+    - **Stock → Import**: download the template, fill it in Excel or Google Sheets, then upload it as CSV (**delete the template's sample rows first**). One row per size; rows with the same brand + product become sizes of one product.
+        - **Required:** `product`, `category`, `sell_price`, and `size_label` for packed items.
+        - **Optional:** `brand`, `gender` (men/women/unisex), `sale_type` (packed, or loose for attar sold per ml), `size_ml` (only for sorting sizes), `barcode` (must be unique), `mrp`, `cost`, `opening_stock` (goes to the branch you're working at), `reorder_level` (low-stock alert), `hsn` and `gst_rate` (default from the category), `image` (picture link), `sku`.
+        - **Uploading again is safe.** A row that matches an existing size (same barcode, or same brand + product + size) **updates** its prices and details instead of adding a copy; blank cells keep the current value. Opening stock is only used for **new** sizes, so use **Stock In** for more stock.
+        - Rows with a problem are skipped and listed (e.g. a barcode that belongs to a different product); the other rows still import.
     - **Stock → Add product**: scan the box barcode. For items without a barcode (loose attar, decants, bottles), tap the magic-wand button next to the barcode box to generate one.
 4. **Stock → Stock In**: scan the boxes you receive. Scanning the same box again adds 1. On **Add product**, scanning a box that already exists adds 1 to its stock straight away (saved immediately, no list). Use **Stock In** for a whole delivery with costs.
 5. Make a test sale, then **void** it from **Sales → bill → Void bill**. Voiding is only possible on the same day.
@@ -225,7 +229,7 @@ If you have only one branch, none of this shows. The app works exactly like a si
 
 ```
 backend/   Apps Script (.gs): api.gs (doPost + role ACL), auth, catalog, inventory, sales, reports…
-  dev/     mock-gas.js (in-memory Apps Script + Sheets), e2e.js (274 checks), server.js (local API)
+  dev/     mock-gas.js (in-memory Apps Script + Sheets), e2e.js (288 checks), server.js (local API)
 frontend/  Vite + React PWA: src/pages (screens), src/lib (api, GST cart maths, printing), src/hooks (scanners)
 ```
 
