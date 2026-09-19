@@ -191,7 +191,8 @@ function setupSheets() {
         "Setup complete." +
         (created.length ? "\nCreated sheets: " + created.join(", ") : "\nAll sheets already existed.") +
         (kept.length ? "\nKept your extra columns in: " + kept.join(", ") + " (no data was removed)." : "") +
-        adminMsg;
+        adminMsg +
+        pdfTimerMsg_();
     alert_(msg);
     return msg;
 }
@@ -331,4 +332,14 @@ function seedDemo() {
     exp.forEach((e, i) => apiSaveExpense_({ category: e[0], title: e[1], amount: e[2], method: "cash", date: daysAgoStr_(e[3]) }, Object.assign({}, ctx, { branch_id: i % 2 ? kn : 1 })));
 
     alert_("Demo data loaded: 2 branches (Kondhwa, Kalyani Nagar), " + demo.length + " products, " + n + " bills, 3 staff users (password demo1234).");
+}
+
+// (re)installs the 15-minute invoice-PDF timer; Setup is the place where Google asks for permission
+function pdfTimerMsg_() {
+    try {
+        return syncPdfTrigger_() ? "\nInvoice PDFs: saved to Drive every 15 minutes." : "";
+    } catch (e) {
+        console.error("syncPdfTrigger_", e);
+        return "\nInvoice PDF timer could not be set up: " + e;
+    }
 }

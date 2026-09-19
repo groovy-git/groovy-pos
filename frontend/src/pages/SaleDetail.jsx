@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MessageCircle, Printer, FileText, Undo2, Ban, Share2 } from "lucide-react";
+import { MessageCircle, Printer, FileText, Undo2, Ban, Share2, CloudUpload, CheckCircle2 } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
 import { inr, fmtDateTime, qtyLabel, istDate, METHOD_LABEL, r2 } from "../lib/format";
@@ -144,6 +144,7 @@ export default function SaleDetail({ id }) {
             </button>
           )}
         </div>
+        <DrivePdf sale={s} onSaved={(pdf_url) => setD((x) => ({ ...x, sale: { ...x.sale, pdf_url } }))} />
       </div>
       <ReturnSheet open={ret} onClose={() => setRet(false)} detail={d} onDone={after} />
       <VoidSheet open={voidOpen} onClose={() => setVoidOpen(false)} sale={s} onDone={after} />
@@ -152,6 +153,42 @@ export default function SaleDetail({ id }) {
 }
 
 const REASONS = ["Damaged / leaked", "Wrong item", "Wrong size", "Customer changed mind"];
+
+// invoice PDF in Google Drive (Groovy POS/Sales_Invoices) — made on the server, so the app stays light
+function DrivePdf({ sale, onSaved }) {
+  const { isAdmin, toast } = useApp();
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const r = await api("saveInvoicePdf", { id: sale.id });
+      onSaved(r.data.pdf_url);
+      toast(r.message, "success");
+    } catch (e) {
+      toast(e.message, "error", 4000);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (sale.pdf_url)
+    return (
+      <div className="row between mt small" style={{ padding: "4px 2px" }}>
+        <span className="row gap-s" style={{ color: "var(--ok)" }}>
+          <CheckCircle2 size={17} /> PDF saved in Google Drive
+        </span>
+        {isAdmin && (
+          <a className="bold" href={sale.pdf_url.replace(/#void$/, "")} target="_blank" rel="noreferrer">
+            Open
+          </a>
+        )}
+      </div>
+    );
+  return (
+    <Button className="secondary block mt" loading={busy} onClick={save}>
+      <CloudUpload size={18} /> {busy ? "Saving PDF…" : "Save PDF to Drive"}
+    </Button>
+  );
+}
 
 function ReturnSheet({ open, onClose, detail, onDone }) {
   const { toast, isAdmin, settings } = useApp();

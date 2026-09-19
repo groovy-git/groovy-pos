@@ -170,6 +170,26 @@ If you have only one branch, none of this shows. The app works exactly like a si
 - **Sender:** emails come from the Google account that owns the Sheet. A personal Gmail account can send about 100 emails a day, which is plenty.
 - The Sheet menu also has **Groovy POS → Email today's day close now**.
 
+## Invoice PDFs in Google Drive
+
+Every bill is also kept as an A4 PDF in your Google Drive:
+
+```
+<folder that holds the Sheet, e.g. Groovy POS>/
+  Sales_Invoices/
+    2026-09/
+      GF-26-27-00001.pdf        ← sale invoice (named by invoice number)
+      GF-CN-26-27-0001.pdf      ← credit note for a return
+      GF-26-27-00007-VOID.pdf   ← a voided bill keeps its PDF, renamed
+```
+
+- **Automatic:** every 15 minutes Google saves PDFs for new bills and credit notes. Checkout is never slowed down, and anything that fails is retried on the next run.
+- **By hand:** open **Sales → a bill → Save PDF to Drive** (about 2–3 seconds). If the bill already has a PDF it shows **"PDF saved in Google Drive"**; admins get an **Open** link.
+- **On/off:** **More → Settings → Billing → Save invoice PDFs to Google Drive automatically**. Saving by hand always works.
+- The PDFs are made by the Google script from the saved bill, not by the phone, so the app stays light.
+- **Keep the folder private.** The files belong to the shop account; share them with customers through WhatsApp or Share in the app instead.
+- **After this update:** run **Groovy POS → 1. Setup / repair sheets** once. It adds the `pdf_url` columns and starts the 15-minute timer. If Google asks for permission, click **Allow**.
+
 ## 5. Updating later
 
 - **Backend** (`.gs` files):
@@ -229,7 +249,7 @@ If you have only one branch, none of this shows. The app works exactly like a si
 
 ```
 backend/   Apps Script (.gs): api.gs (doPost + role ACL), auth, catalog, inventory, sales, reports…
-  dev/     mock-gas.js (in-memory Apps Script + Sheets), e2e.js (288 checks), server.js (local API)
+  dev/     mock-gas.js (in-memory Apps Script + Sheets), e2e.js (321 checks), server.js (local API)
 frontend/  Vite + React PWA: src/pages (screens), src/lib (api, GST cart maths, printing), src/hooks (scanners)
 ```
 

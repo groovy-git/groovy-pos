@@ -58,7 +58,7 @@ const EDITABLE_SETTINGS_ = [
     "business_name", "tagline", "address", "phone", "email", "gstin", "state_name", "state_code",
     "invoice_prefix", "tola_ml", "salesman_max_disc_pct", "return_days", "round_off",
     "allow_negative_stock", "receipt_footer", "expense_categories",
-    "report_emails", "nightly_report", "nightly_report_hour", "nightly_report_skip_empty",
+    "report_emails", "nightly_report", "nightly_report_hour", "nightly_report_skip_empty", "invoice_pdfs",
 ];
 const NIGHTLY_KEYS_ = ["nightly_report", "nightly_report_hour"];
 
@@ -85,6 +85,7 @@ function apiSaveSettings_(p, ctx) {
     }
     const before = {};
     NIGHTLY_KEYS_.forEach((k) => (before[k] = setting_(k)));
+    const pdfBefore = setting_("invoice_pdfs");
     if (vals.gstin) {
         vals.gstin = str_(vals.gstin).toUpperCase();
         if (!/^[0-9A-Z]{15}$/.test(vals.gstin)) fail_("GSTIN must be 15 letters/digits");
@@ -108,6 +109,14 @@ function apiSaveSettings_(p, ctx) {
         } catch (e) {
             console.error("syncNightlyTrigger_", e);
             message = "Settings saved, but the nightly email could not be scheduled. Open the Sheet → Groovy POS menu once to grant permission, then save again.";
+        }
+    }
+    if (setting_("invoice_pdfs") !== pdfBefore) {
+        try {
+            syncPdfTrigger_();
+        } catch (e) {
+            console.error("syncPdfTrigger_", e);
+            message = "Settings saved, but the invoice PDF timer could not be changed. Open the Sheet → Groovy POS → 1. Setup / repair sheets once, then save again.";
         }
     }
     return { message, data: publicSettings_(ctx) };

@@ -61,6 +61,7 @@ const SCHEMA = {
         // 1 = GST breakup not printed on the customer's bill (tax still recorded & reported)
         gst_hidden: "n",
         branch_id: "n",
+        pdf_url: "s", // invoice PDF in Drive (…#void once renamed -VOID)
     },
     Sale_Items: {
         id: "n", sale_id: "n", variant_id: "n", product_name: "s", brand: "s", size: "s",
@@ -76,6 +77,7 @@ const SCHEMA = {
         id: "n", credit_note_no: "s", fy: "s", sale_id: "n", invoice_no: "s", salesman_id: "n",
         total: "n", taxable: "n", tax: "n", refund_method: "s", reason: "s", user_id: "n", at: "d",
         branch_id: "n",
+        pdf_url: "s", // credit note PDF in Drive
     },
     Return_Items: {
         id: "n", return_id: "n", sale_item_id: "n", variant_id: "n", qty: "n", amount: "n",
@@ -123,6 +125,8 @@ const DEFAULT_SETTINGS = {
     nightly_report: "no",
     nightly_report_hour: "22",
     nightly_report_skip_empty: "yes",
+    // invoice & credit-note PDFs saved to Drive every 15 min (Sales_Invoices next to the Sheet)
+    invoice_pdfs: "yes",
     internal_barcode_seq: "0",
     catalog_version: "1",
 };

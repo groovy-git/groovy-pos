@@ -208,17 +208,18 @@ check("manual emails limited per day", /already sent 5/.test(call("emailDayClose
 
 // ---- B) nightly email on/off ----
 ok(call("saveSettings", { settings: { report_emails: "Owner@X.in; accountant@x.in", nightly_report: "yes", nightly_report_hour: "22" } }, T), "turn nightly on");
-check("one trigger at 22:00 IST", env.triggers.length === 1 && env.triggers[0].hour === 22 && env.triggers[0].tz === "Asia/Kolkata", env.triggers);
+const nightlyTriggers = () => env.triggers.filter((x) => x.fn === "sendNightlyReport");
+check("one trigger at 22:00 IST", nightlyTriggers().length === 1 && nightlyTriggers()[0].hour === 22 && nightlyTriggers()[0].tz === "Asia/Kolkata", nightlyTriggers());
 check("emails normalised", call("getSettings", {}, T).data.report_emails === "owner@x.in, accountant@x.in");
 ok(call("saveSettings", { settings: { nightly_report_hour: "21" } }, T), "change hour");
-check("still one trigger, new hour", env.triggers.length === 1 && env.triggers[0].hour === 21);
+check("still one trigger, new hour", nightlyTriggers().length === 1 && nightlyTriggers()[0].hour === 21);
 env.mails.length = 0;
 check("nightly sends when on", /: sent$/.test(ctx.sendNightlyReport()) && env.mails.length === 1 && env.mails[0].to === "owner@x.in,accountant@x.in");
 const offRes = call("saveSettings", { settings: { nightly_report: "no" } }, T);
 check("turn nightly off", offRes.success && /OFF/.test(offRes.message), offRes.message);
-check("trigger removed when off", env.triggers.length === 0);
+check("trigger removed when off", nightlyTriggers().length === 0);
 check("nightly does nothing when off", ctx.sendNightlyReport() === "disabled" && env.mails.length === 1);
-check("unrelated save keeps trigger state", ok(call("saveSettings", { settings: { tagline: "Smell Of Perfection" } }, T), "unrelated save") !== undefined && env.triggers.length === 0);
+check("unrelated save keeps trigger state", ok(call("saveSettings", { settings: { tagline: "Smell Of Perfection" } }, T), "unrelated save") !== undefined && nightlyTriggers().length === 0);
 
 // ---- held bills, customers, logs ----
 const held = ok(call("holdBill", { label: "Rahul", cart: { lines: [{ variant_id: vAsad.id, qty: 1 }] } }, S1), "hold");
@@ -502,6 +503,48 @@ const allCats = envC.call("getCatalog", {}, CT).data.categories;
 allCats.slice(1).forEach((c) => envC.call("deleteCategory", { id: c.id }, CT));
 const lastCat = envC.call("deleteCategory", { id: allCats[0].id }, CT);
 check("last category kept", !lastCat.success && /at least one/.test(lastCat.message) && envC.call("getCatalog", {}, CT).data.categories.length === 1, lastCat);
+
+// ---- invoice PDFs in Drive ----
+const gpFolder = env.drive.root.createFolder("Groovy POS");
+env.drive.sheetFile.parent = gpFolder; // the owner moved the Sheet into "Groovy POS"
+const pdfFiles = () => env.drive.files().filter((f) => !f.trashed && /\.pdf$/.test(f.name));
+const pathOf = (f) => { const p = []; let x = f.parent; while (x) { p.unshift(x.name); x = x.parent; } return p.join("/"); };
+check("PDF timer installed every 15 min", env.triggers.some((x) => x.fn === "savePendingInvoicePdfs" && x.minutes === 15), env.triggers);
+const pdfSaleReq = { client_ref: "pdf-1", lines: [{ variant_id: vBottle.id, qty: 1 }], customer: { phone: "9876500001", name: "<b>Evil</b> & Co" }, payments: [{ method: "cash", amount: 50 }] };
+const pdfSale = ok(call("completeSale", pdfSaleReq, T, 1), "sale for PDF").sale;
+const pdf1 = ok(call("saveInvoicePdf", { id: pdfSale.id }, T, 1), "save PDF manually");
+const pdfFile = pdfFiles().find((f) => f.name === pdfSale.invoice_no.replace(/\//g, "-") + ".pdf");
+check("PDF saved in Groovy POS/Sales_Invoices/<month>", !!pdfFile && pathOf(pdfFile) === "My Drive/Groovy POS/Sales_Invoices/" + String(pdfSale.date).slice(0, 7), pdfFile && pathOf(pdfFile));
+check("pdf_url stored on the bill", !!pdf1.pdf_url && ok(call("getSale", { id: pdfSale.id }, T, 1), "bill detail").sale.pdf_url === pdf1.pdf_url);
+check("PDF html escapes customer name", pdfFile && pdfFile.html.includes("&lt;b&gt;Evil&lt;/b&gt; &amp; Co") && !pdfFile.html.includes("<b>Evil"));
+const pdfCount = pdfFiles().length;
+const pdf2 = ok(call("saveInvoicePdf", { id: pdfSale.id }, T, 1), "save PDF again");
+check("second press: already saved, no duplicate file", pdf2.already === true && pdfFiles().length === pdfCount);
+const RAVI3 = ok(call("login", { email: "ravi@x.in", password: "secret4" }), "Ravi login for PDF").token;
+check("salesman can't save someone else's bill PDF", call("saveInvoicePdf", { id: pdfSale.id }, RAVI3, 1).code === "FORBIDDEN");
+// GST hidden → plain INVOICE without HSN/GST columns
+const hidSale = ok(call("completeSale", Object.assign({}, pdfSaleReq, { client_ref: "pdf-2", gst_hidden: true, customer: {} }), T, 1), "gst-hidden sale").sale;
+ok(call("saveInvoicePdf", { id: hidSale.id }, T, 1), "save gst-hidden PDF");
+const hidFile = pdfFiles().find((f) => f.name.startsWith(hidSale.invoice_no.replace(/\//g, "-")));
+check("GST hidden: no HSN / tax columns", hidFile && !hidFile.html.includes(">HSN<") && !hidFile.html.includes("TAX INVOICE") && hidFile.html.includes("INVOICE"));
+// void after the PDF exists → timer renames it -VOID
+ok(call("voidSale", { id: pdfSale.id, reason: "test" }, T, 1), "void PDF sale");
+require("vm").runInContext("resetReqCache_()", ctx);
+const jobDone = ctx.savePendingInvoicePdfs();
+check("timer: renames voided bill's PDF", pdfFile.name === pdfSale.invoice_no.replace(/\//g, "-") + "-VOID.pdf", pdfFile.name);
+const pdfLeft = require("vm").runInContext('resetReqCache_(); rows_("Sales").filter((s) => !s.pdf_url).length + rows_("Returns").filter((r) => !r.pdf_url).length', ctx);
+check("timer: every bill and credit note now has a PDF", jobDone > 0 && pdfLeft === 0, { jobDone, pdfLeft });
+check("credit notes saved as PDFs", require("vm").runInContext('rows_("Returns").every((r) => r.pdf_url)', ctx) &&
+    pdfFiles().some((f) => /C-|CN-/.test(f.name) && f.html.includes("CREDIT NOTE")));
+const pdfTotal = pdfFiles().length;
+check("timer again: nothing new to do", ctx.savePendingInvoicePdfs() === 0 && pdfFiles().length === pdfTotal);
+// turning it off removes the timer and stops the job
+ok(call("saveSettings", { settings: { invoice_pdfs: "no" } }, T), "PDFs off");
+check("PDFs off: timer removed", !env.triggers.some((x) => x.fn === "savePendingInvoicePdfs"));
+ok(call("completeSale", Object.assign({}, pdfSaleReq, { client_ref: "pdf-3", customer: {} }), T, 1), "sale while PDFs off");
+check("PDFs off: job does nothing", ctx.savePendingInvoicePdfs() === undefined && pdfFiles().length === pdfTotal);
+ok(call("saveSettings", { settings: { invoice_pdfs: "yes" } }, T), "PDFs on");
+check("PDFs on: timer back", env.triggers.filter((x) => x.fn === "savePendingInvoicePdfs").length === 1);
 
 // ---- reset test data (keep setup) on a fresh env ----
 const envR = createEnv();

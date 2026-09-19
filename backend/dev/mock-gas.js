@@ -130,6 +130,7 @@ class Sheet {
 class Spreadsheet {
     constructor() { this.sheets = [new Sheet("Sheet1")]; }
     getSheetByName(n) { return this.sheets.find((s) => s.name === n) || null; }
+    getId() { return "SHEET_FILE"; }
     insertSheet(n) { const s = new Sheet(n); this.sheets.push(s); return s; }
     getSheets() { return this.sheets.slice(); }
     deleteSheet(s) { this.sheets = this.sheets.filter((x) => x !== s); }
@@ -145,8 +146,49 @@ function formatDate(d, tz, pattern) {
         .replace("HH", parts.hour).replace("mm", parts.minute).replace("ss", parts.second);
 }
 
+// tiny in-memory Drive: folders, files (PDF blobs keep their HTML for tests)
+function createDrive() {
+    let seq = 0;
+    const items = new Map();
+    const iter = (list) => { let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; };
+    const children = (f, kind) => [...items.values()].filter((x) => x.parent === f && x.kind === kind && !x.trashed);
+    const make = (kind, name, parent, extra) => {
+        const id = (kind === "folder" ? "FOLDER" : "FILE") + ++seq;
+        const o = Object.assign({ id, kind, name, parent, trashed: false }, extra);
+        o.getId = () => o.id; o.getName = () => o.name; o.setName = (n) => ((o.name = n), o);
+        o.isTrashed = () => o.trashed; o.setTrashed = (t) => ((o.trashed = t), o);
+        o.getParents = () => iter(o.parent ? [o.parent] : []);
+        o.getUrl = () => "https://drive.google.com/" + (kind === "folder" ? "drive/folders/" : "file/d/") + o.id + "/view";
+        if (kind === "folder") {
+            o.getFoldersByName = (n) => iter(children(o, "folder").filter((x) => x.name === n));
+            o.createFolder = (n) => make("folder", n, o);
+            o.createFile = (blob) => make("file", blob.name, o, { mime: blob.mime, html: blob.html });
+        }
+        o.setSharing = () => o;
+        items.set(o.id, o);
+        return o;
+    };
+    const root = make("folder", "My Drive", null);
+    const sheetFile = make("file", "Groovy POS Data", root);
+    items.delete(sheetFile.id);
+    sheetFile.id = "SHEET_FILE";
+    items.set("SHEET_FILE", sheetFile);
+    const byId = (id) => { const o = items.get(id); if (!o) throw new Error("No item with the given ID: " + id); return o; };
+    const api = {
+        getRootFolder: () => root,
+        getFileById: byId,
+        getFolderById: byId,
+        getFoldersByName: (n) => iter([...items.values()].filter((x) => x.kind === "folder" && x.name === n && !x.trashed)),
+        createFolder: (n) => make("folder", n, root),
+        Access: { ANYONE_WITH_LINK: "anyone" }, Permission: { VIEW: "view" },
+    };
+    return { api, items, root, sheetFile, make, files: () => [...items.values()].filter((x) => x.kind === "file" && x.id !== "SHEET_FILE") };
+}
+
 function createEnv() {
     const ss = new Spreadsheet();
+    const drive = createDrive();
+    const props = new Map();
     const cache = new Map();
     const mails = [];
     const alerts = [];
@@ -168,7 +210,10 @@ function createEnv() {
             base64Decode: (s) => [...Buffer.from(s, "base64")],
             getUuid: () => crypto.randomUUID(),
             formatDate,
-            newBlob: () => ({}),
+            newBlob: (data, mime, name) => ({
+                html: data, mime, name,
+                getAs: (m) => { const b = { html: data, mime: m, name, setName: (n) => ((b.name = n), b) }; return b; },
+            }),
         },
         CacheService: {
             getScriptCache: () => ({
@@ -179,14 +224,19 @@ function createEnv() {
             }),
         },
         LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock: () => {}, releaseLock: () => {} }) },
-        PropertiesService: { getScriptProperties: () => ({ getProperty: () => null }) },
+        PropertiesService: {
+            getScriptProperties: () => ({
+                getProperty: (k) => (props.has(k) ? props.get(k) : null),
+                setProperty: (k, v) => props.set(k, String(v)),
+            }),
+        },
         Session: { getEffectiveUser: () => ({ getEmail: () => "owner@groovy.test" }) },
         ContentService: {
             MimeType: { JSON: "json" },
             createTextOutput: (s) => ({ content: s, setMimeType() { return this; } }),
         },
         MailApp: { sendEmail: (m) => mails.push(m), getRemainingDailyQuota: () => 100 },
-        DriveApp: {},
+        DriveApp: drive.api,
         ScriptApp: {
             getService: () => ({ getUrl: () => "" }),
             getProjectTriggers: () => triggers.slice(),
@@ -195,6 +245,7 @@ function createEnv() {
                 const t = { fn, getHandlerFunction: () => fn };
                 const b = {
                     timeBased: () => b, everyDays: (n) => ((t.days = n), b), inTimezone: (z) => ((t.tz = z), b),
+                    everyMinutes: (n) => ((t.minutes = n), b),
                     atHour: (h) => ((t.hour = h), b), create: () => (triggers.push(t), t),
                 };
                 return b;
@@ -213,7 +264,7 @@ function createEnv() {
         const out = ctx.doPost({ postData: { contents: JSON.stringify({ action, payload, token, branch_id, req_id }) } });
         return JSON.parse(out.content);
     };
-    return { ctx, ss, call, mails, alerts, cache, triggers };
+    return { ctx, ss, call, mails, alerts, cache, triggers, drive, props };
 }
 
 module.exports = { createEnv };
