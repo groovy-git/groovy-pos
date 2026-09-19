@@ -6,7 +6,7 @@ import { navigate, useRoute } from "../lib/router";
 import { searchItems, lookupBarcode } from "../lib/catalog";
 import { inr, fmtDateTime, qtyLabel, r3, plural } from "../lib/format";
 import { beepError, beepOk } from "../lib/feedback";
-import { parseCSV, downloadText, IMPORT_TEMPLATE } from "../lib/files";
+import { parseCSV, downloadText, IMPORT_TEMPLATE, isWebsiteExport, fromWebsiteExport } from "../lib/files";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
 import TopBar from "../components/TopBar";
 import CameraScanner from "../components/CameraScanner";
@@ -313,11 +313,13 @@ function AdjustSheet({ open, item, onClose }) {
 function ImportSheet({ open, onClose }) {
   const { refreshCatalog, toast } = useApp();
   const [rows, setRows] = useState(null);
+  const [website, setWebsite] = useState(null); // {skipped} when the file is the website's product export
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (open) {
       setRows(null);
+      setWebsite(null);
       setResult(null);
     }
   }, [open]);
@@ -327,7 +329,14 @@ function ImportSheet({ open, onClose }) {
     const rd = new FileReader();
     rd.onload = () => {
       const parsed = parseCSV(String(rd.result));
-      setRows(parsed);
+      if (isWebsiteExport(parsed)) {
+        const m = fromWebsiteExport(parsed);
+        setRows(m.rows);
+        setWebsite({ skipped: m.skipped });
+      } else {
+        setRows(parsed);
+        setWebsite(null);
+      }
       setResult(null);
     };
     rd.readAsText(f);
@@ -364,6 +373,8 @@ function ImportSheet({ open, onClose }) {
         <br />
         Uploading again is safe: existing sizes (same barcode, or same brand + product + size) get their prices updated — blank cells keep the current value — and are
         never duplicated. Opening stock is only used for new sizes; use Stock In for more stock.
+        <br />
+        You can also upload the product export from your website as it is — its columns are matched automatically, and SKU or barcode finds existing items.
       </p>
       <button className="btn secondary block" onClick={() => downloadText("groovy-products-template.csv", IMPORT_TEMPLATE)}>
         <Download size={18} /> Download template
@@ -374,8 +385,25 @@ function ImportSheet({ open, onClose }) {
       </div>
       {rows && !result && (
         <div className="card">
+          {website && (
+            <div className="small mb" style={{ color: "var(--ok)", fontWeight: 700 }}>
+              Website product export recognised — columns matched automatically.
+            </div>
+          )}
           <b>{rows.length} rows found.</b>
-          <div className="small muted">First row: {rows[0] ? `${rows[0].brand || ""} ${rows[0].product || ""} ${rows[0].size_label || ""}` : "—"}</div>
+          <div className="small muted">
+            First row: {rows[0] ? `${rows[0].brand || ""} ${rows[0].product || ""} ${rows[0].size_label || ""}${rows[0].sku ? " · " + rows[0].sku : ""}` : "—"}
+          </div>
+          {website && website.skipped.length > 0 && (
+            <>
+              <div className="bad-text small mt">{website.skipped.length} rows will be skipped:</div>
+              {website.skipped.slice(0, 20).map((e) => (
+                <div key={e.row} className="small">
+                  Row {e.row}: {e.message}
+                </div>
+              ))}
+            </>
+          )}
         </div>
       )}
       {result && (

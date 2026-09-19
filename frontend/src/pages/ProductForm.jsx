@@ -1,22 +1,21 @@
 import { useMemo, useRef, useState } from "react";
-import { ScanLine, Wand2, Plus, Trash2, Camera, EyeOff, Eye, ImageOff } from "lucide-react";
+import { ScanLine, Wand2, Plus, Trash2, Camera, EyeOff, Eye, ImageOff, Hash } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
-import { goBack, navigate, useRoute } from "../lib/router";
-import { imageUrl, lookupBarcode, STOCKIN_PENDING } from "../lib/catalog";
+import { goBack, useRoute } from "../lib/router";
+import { imageUrl } from "../lib/catalog";
 import { compressImage } from "../lib/files";
-import { beepError, beepOk } from "../lib/feedback";
-import { qtyLabel } from "../lib/format";
+import { beepOk } from "../lib/feedback";
 import TopBar from "../components/TopBar";
 import CameraScanner from "../components/CameraScanner";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
 import { Button, Chips, Field, MoneyInput, Seg, useConfirm } from "../components/ui";
 
 const GST = [0, 5, 12, 18, 28];
-const blankVariant = (barcode = "") => ({ id: 0, size_label: "", size_ml: "", barcode, mrp: "", sell_price: "", cost: "", opening_stock: "", reorder_level: "3", active: 1 });
+const blankVariant = (barcode = "") => ({ id: 0, size_label: "", size_ml: "", sku: "", barcode, mrp: "", sell_price: "", cost: "", opening_stock: "", reorder_level: "3", active: 1 });
 
 export default function ProductForm({ id }) {
-  const { rawCatalog, catalog, refreshCatalog, toast, isManager, isAdmin, patchStock, isAllBranches } = useApp();
+  const { rawCatalog, catalog, refreshCatalog, toast, isManager, isAdmin } = useApp();
   const route = useRoute();
   const existing = id ? rawCatalog.products.find((p) => p.id === id) : null;
   const [confirm, confirmNode] = useConfirm();
@@ -33,7 +32,7 @@ export default function ProductForm({ id }) {
     if (existing)
       return rawCatalog.variants
         .filter((v) => v.product_id === existing.id)
-        .map((v) => ({ ...v, cost: v.avg_cost ?? "", opening_stock: "", size_ml: v.size_ml || "" }));
+        .map((v) => ({ ...v, cost: v.avg_cost ?? "", opening_stock: "", size_ml: v.size_ml || "", sku: v.sku || "" }));
     return [blankVariant(route.params.get("barcode") || "")];
   });
   const [scanFor, setScanFor] = useState(null);
@@ -42,61 +41,18 @@ export default function ProductForm({ id }) {
   const [preview, setPreview] = useState("");
   const fileRef = useRef(null);
 
-  // on Add product, scanning a box that already exists means "received another one" → +1 saved to stock now
-  const quick = useRef({ pending: {}, busy: false });
-  const flushQuick = async () => {
-    const q = quick.current;
-    const ids = Object.keys(q.pending);
-    if (q.busy || !ids.length) return;
-    const batch = q.pending;
-    q.pending = {};
-    q.busy = true;
-    try {
-      const r = await api("stockIn", {
-        supplier_note: "Quick scan (Add product)",
-        lines: ids.map((id) => ({ variant_id: Number(id), qty: batch[id], unit_cost: 0 })),
-      });
-      patchStock(r.data.stock);
-      beepOk();
-      r.data.stock.forEach((s) => {
-        const it = catalog.byVariant.get(s.id);
-        if (it) toast(`${it.name} ${it.size} +${batch[s.id]} saved — now ${qtyLabel(s.stock_qty, it.unit)} in stock`, "success", 2500);
-      });
-    } catch (e) {
-      beepError();
-      toast(e.code === "NETWORK" ? e.message : e.message + " — nothing was saved", "error", 4000);
-    } finally {
-      q.busy = false;
-      if (Object.keys(q.pending).length) flushQuick(); // scans that came in meanwhile
-    }
-  };
-  const quickStockIn = (code) => {
-    const it = lookupBarcode(catalog, code);
-    if (!it) return;
-    if (it.unit === "ml") {
-      // loose attar is received in ml — open Stock In to type the amount
-      sessionStorage.setItem(STOCKIN_PENDING, code);
-      beepOk();
-      navigate("stock/in", { replace: true });
-      return;
-    }
-    if (isAllBranches) {
-      beepError();
-      toast("Choose a branch first (tap 📍 under the title)", "error");
-      return;
-    }
-    quick.current.pending[it.id] = (quick.current.pending[it.id] || 0) + 1;
-    flushQuick();
-  };
+  // Add product: a scanner scan only fills a Barcode box (stock is added in Stock In, never here)
   useBarcodeScanner((code, target) => {
-    if (!lookupBarcode(catalog, code)) return;
     // the scanner also typed the code into whatever box had focus (e.g. Product name) — take it back out
     if (target && target.tagName === "INPUT" && typeof target.value === "string" && target.value.endsWith(code)) {
       const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
       setValue.call(target, target.value.slice(0, -code.length));
       target.dispatchEvent(new Event("input", { bubbles: true }));
     }
-    quickStockIn(code);
+    const i = vars.findIndex((v) => !v.barcode);
+    if (i < 0) return toast("Tap the Barcode box of the size first", "warn");
+    setV(i, { barcode: code });
+    beepOk();
   }, !existing && scanFor === null);
 
   const set = (patch) => setP((x) => ({ ...x, ...patch }));
@@ -115,6 +71,25 @@ export default function ProductForm({ id }) {
     if (it && it.id !== vid) return `Already used by ${it.name} ${it.size}`;
     if (vars.filter((v) => v.barcode === code).length > 1) return "Same barcode used twice here";
     return "";
+  };
+
+  // SKU clash with another size (ignoring case)?
+  const skuClash = (sku, vid) => {
+    const k = String(sku || "").trim().toUpperCase();
+    if (!k) return "";
+    const it = catalog.items.find((x) => String(x.sku || "").toUpperCase() === k);
+    if (it && it.id !== vid) return `SKU already used by ${it.name} ${it.size}`;
+    if (vars.filter((v) => String(v.sku || "").trim().toUpperCase() === k).length > 1) return "Same SKU used twice here";
+    return "";
+  };
+
+  const generateSku = async (i) => {
+    try {
+      const r = await api("generateSku");
+      setV(i, { sku: r.data.sku });
+    } catch (e) {
+      toast(e.message, "error");
+    }
   };
 
   const generate = async (i) => {
@@ -148,7 +123,7 @@ export default function ProductForm({ id }) {
     if (!p.name.trim()) return toast("Enter the product name", "error");
     if (!p.category_id) return toast("Choose a category", "error");
     for (const v of vars) {
-      const c = clash(v.barcode, v.id);
+      const c = clash(v.barcode, v.id) || skuClash(v.sku, v.id);
       if (c) return toast(c, "error");
     }
     setBusy(true);
@@ -161,6 +136,7 @@ export default function ProductForm({ id }) {
           id: v.id || undefined,
           size_label: loose ? v.size_label || "Loose (per ml)" : v.size_label,
           size_ml: v.size_ml,
+          sku: v.sku, // always sent, so editing never wipes it
           barcode: v.barcode,
           mrp: v.mrp,
           sell_price: v.sell_price,
@@ -338,16 +314,7 @@ export default function ProductForm({ id }) {
                     value={v.barcode}
                     data-scan-ignore
                     onChange={(e) => setV(i, { barcode: e.target.value.replace(/\s/g, "") })}
-                    onKeyDown={(e) => {
-                      if (e.key !== "Enter") return;
-                      e.preventDefault();
-                      // a scanner typing into this box ends with Enter — an existing box goes to Stock In
-                      const code = e.target.value.replace(/\s/g, "");
-                      if (!existing && lookupBarcode(catalog, code)) {
-                        setV(i, { barcode: "" }); // it belongs to another product, not this new one
-                        quickStockIn(code);
-                      } else beepOk();
-                    }}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), beepOk())}
                     placeholder="Scan or type"
                   />
                   <button className="icon-btn filled" onClick={() => setScanFor(i)} aria-label="Scan barcode with camera">
@@ -355,6 +322,14 @@ export default function ProductForm({ id }) {
                   </button>
                   <button className="icon-btn soft" onClick={() => generate(i)} aria-label="Generate barcode">
                     <Wand2 size={19} />
+                  </button>
+                </div>
+              </Field>
+              <Field label="SKU (optional)" error={skuClash(v.sku, v.id)} hint="Your item code. If this product is also on your website, use the same SKU there — imports find items by it.">
+                <div className="row gap-s">
+                  <input className="input grow" value={v.sku || ""} onChange={(e) => setV(i, { sku: e.target.value.trim() })} placeholder="e.g. SKU-0001" autoCapitalize="characters" />
+                  <button className="icon-btn soft" onClick={() => generateSku(i)} aria-label="Generate SKU" title="Generate SKU (next in the SKU-#### series)">
+                    <Hash size={19} />
                   </button>
                 </div>
               </Field>
@@ -411,12 +386,6 @@ export default function ProductForm({ id }) {
         continuous={false}
         title="Scan product barcode"
         onCode={(code) => {
-          const known = lookupBarcode(catalog, code);
-          if (known && !existing) {
-            setScanFor(null);
-            quickStockIn(code);
-            return { ok: true, label: `${known.name} ${known.size} +1` };
-          }
           setV(scanFor, { barcode: code });
           const c = catalog.byBarcode.get(code);
           return c ? { ok: false, label: `Already used by ${c.name} ${c.size}` } : { ok: true, label: code };

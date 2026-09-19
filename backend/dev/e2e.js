@@ -302,6 +302,47 @@ check("import: barcode of another product", /3:Barcode 6294015152225 belongs to 
 check("import: packed/loose change refused", /4:Can't change packed\/loose/.test(impMsgs), impMsgs);
 check("import: new size added once, repeat refused", clash2.variants === 1 && /6:Repeats an earlier row/.test(impMsgs), clash2);
 
+// SKU works as a key like the barcode (website exports carry SKU-0001 …)
+const skuVar = (sku) => call("getCatalog", {}, T).data.variants.find((v) => String(v.sku).toUpperCase() === sku.toUpperCase());
+const prodNameOf = (v) => call("getCatalog", {}, T).data.products.find((x) => x.id === v.product_id).name;
+const skuNew = ok(call("importCatalog", { rows: [
+    { brand: "Groovy Fragrances", product: "Flora Inspired Perfume | Unisex", new_category: "Eau De Parfum", size_label: "30ml", size_ml: 30, sell_price: 350, mrp: 350, sku: "SKU-0001", barcode: "2220631", opening_stock: 47, gst_rate: 18 },
+    { brand: "Groovy Fragrances", product: "Chocolate Musk Roll-On Attar", new_category: "Packed Attar", size_label: "12ml", sell_price: 400, sku: "SKU-0020", barcode: "800006" },
+] }, T, 1), "import with SKUs and new_category");
+check("new products use new_category", skuNew.products === 2 && call("getCatalog", {}, T).data.categories.find((c) => c.id === call("getCatalog", {}, T).data.products.find((x) => x.name === "Chocolate Musk Roll-On Attar").category_id).name === "Packed Attar");
+check("SKU stored, opening stock for the new size", skuVar("SKU-0001") && skuVar("SKU-0001").stock_qty === 47);
+// rename in the app, then re-import by SKU with the website name and a new price
+const floraVar = skuVar("SKU-0001");
+const floraProd = call("getCatalog", {}, T).data.products.find((x) => x.id === floraVar.product_id);
+ok(call("saveProduct", Object.assign({}, floraProd, { name: "Flora 30", brand_name: "Groovy Fragrances", variants: [{ id: floraVar.id, size_label: "30ml", barcode: floraVar.barcode, sell_price: 350, mrp: 350 }] }), T, 1), "rename product in app (old app: no sku sent)");
+check("saving without sku keeps the SKU", skuVar("SKU-0001") && skuVar("SKU-0001").id === floraVar.id);
+const bySkuUpd = ok(call("importCatalog", { rows: [
+    { brand: "Groovy Fragrances", product: "Flora Inspired Perfume | Unisex", size_label: "30ML", sell_price: 375, mrp: 400, sku: "sku-0001", opening_stock: 999, new_category: "Packed Attar" },
+] }, T, 1), "re-import by SKU, other name");
+check("SKU match updates price, keeps app name, ignores stock", bySkuUpd.updated === 1 && skuVar("SKU-0001").sell_price === 375 && prodNameOf(skuVar("SKU-0001")) === "Flora 30" && skuVar("SKU-0001").stock_qty === 47, bySkuUpd);
+check("new_category never changes an existing product", call("getCatalog", {}, T).data.products.find((x) => x.id === floraVar.product_id).category_id === floraProd.category_id);
+// SKU filled in on a size found by brand + product + size
+ok(call("importCatalog", { rows: [{ brand: "Armaf", product: "Club De Nuit", size_label: "105ml", sku: "SKU-CDN-105" }] }, T), "fill SKU by name+size");
+check("SKU filled on matched size", skuVar("SKU-CDN-105") && prodNameOf(skuVar("SKU-CDN-105")) === "Club De Nuit");
+const skuConf = ok(call("importCatalog", { rows: [
+    { brand: "Armaf", product: "Club De Nuit", size_label: "105ml", sku: "SKU-OTHER" },
+    { brand: "X", product: "Y", size_label: "30ml", sell_price: 5, barcode: "2220631", sku: "SKU-0020" },
+    { brand: "Nope", product: "Wrong Name", size_label: "30ml", sell_price: 5, barcode: "6294015152225" },
+    { brand: "Nope", product: "Wrong Name", size_label: "12ml", sell_price: 410, mrp: 450, barcode: "800006", sku: "SKU-0020" },
+] }, T, 1), "SKU conflicts");
+const skuMsgs = skuConf.errors.map((e) => e.row + ":" + e.message).join(" | ");
+check("size already has another SKU", /2:Size 105ml already has SKU SKU-CDN-105/.test(skuMsgs), skuMsgs);
+check("barcode and SKU of different items", /3:Barcode 2220631 and SKU SKU-0020 belong to different items/.test(skuMsgs), skuMsgs);
+check("barcode + other name without SKU still refused", /4:Barcode 6294015152225 belongs to/.test(skuMsgs), skuMsgs);
+check("barcode + other name allowed when SKU agrees", skuConf.updated === 1 && skuVar("SKU-0020").sell_price === 410 && prodNameOf(skuVar("SKU-0020")) === "Chocolate Musk Roll-On Attar", skuConf);
+const skuAgain = ok(call("importCatalog", { rows: [{ brand: "Groovy Fragrances", product: "Flora Inspired Perfume | Unisex", size_label: "30ML", sell_price: 375, mrp: 400, sku: "SKU-0001" }] }, T, 1), "same SKU row again");
+check("same SKU file again: unchanged, no duplicate", skuAgain.unchanged === 1 && skuAgain.variants === 0 && call("getCatalog", {}, T).data.variants.filter((v) => String(v.sku).toUpperCase() === "SKU-0001").length === 1);
+// saveProduct: duplicate SKU refused, explicit SKU edit saved
+const dupSku = call("saveProduct", { name: "Dup Sku", brand_name: "X", category_id: cat("Eau De Parfum"), gst_rate: 18, variants: [{ size_label: "10ml", sell_price: 100, sku: "sku-0001" }] }, T, 1);
+check("saveProduct refuses a duplicate SKU", !dupSku.success && /SKU sku-0001 already belongs to/.test(dupSku.message), dupSku);
+ok(call("saveProduct", Object.assign({}, floraProd, { name: "Flora 30", brand_name: "Groovy Fragrances", variants: [{ id: floraVar.id, size_label: "30ml", barcode: floraVar.barcode, sell_price: 375, mrp: 400, sku: "SKU-0001-B" }] }), T, 1), "edit SKU in app");
+check("SKU edited in app", skuVar("SKU-0001-B") && skuVar("SKU-0001-B").id === floraVar.id);
+
 // ---- setup upgrades an older sheet that lacks a newly added trailing column ----
 const salesSh = env.ss.getSheetByName("Sales");
 const lastCol = require("vm").runInContext("Object.keys(SCHEMA.Sales).length", ctx);
@@ -557,6 +598,19 @@ ok(call("completeSale", Object.assign({}, pdfSaleReq, { client_ref: "pdf-3", cus
 check("PDFs off: job does nothing", ctx.savePendingInvoicePdfs() === undefined && pdfFiles().length === pdfTotal);
 ok(call("saveSettings", { settings: { invoice_pdfs: "yes" } }, T), "PDFs on");
 check("PDFs on: timer back", env.triggers.filter((x) => x.fn === "savePendingInvoicePdfs").length === 1);
+
+// Generate SKU continues the website series (SKU-0001 …); numbers are never handed out twice
+const genSku = () => call("generateSku", {}, T, 1);
+const skuHigh = Math.max(...call("getCatalog", {}, T).data.variants.map((v) => (/^SKU-(\d+)$/i.exec(v.sku || "") || [0, 0])[1]).map(Number));
+const g1 = genSku().data.sku;
+const g2 = genSku().data.sku;
+check("generateSku: next after highest SKU-####", g1 === "SKU-" + String(skuHigh + 1).padStart(4, "0") && g2 === "SKU-" + String(skuHigh + 2).padStart(4, "0"), { skuHigh, g1, g2 });
+const g3prod = ok(call("saveProduct", { name: "Gen Sku Item", brand_name: "X", category_id: cat("Eau De Parfum"), gst_rate: 18, variants: [{ size_label: "10ml", sell_price: 100, sku: genSku().data.sku }] }, T, 1), "save with generated SKU").id;
+const g3sku = call("getCatalog", {}, T).data.variants.find((v) => v.product_id === g3prod).sku;
+ok(call("deleteProduct", { id: g3prod }, T, 1), "delete item with the highest SKU");
+check("deleted item's SKU number not reused", genSku().data.sku === "SKU-" + String(Number(g3sku.slice(4)) + 1).padStart(4, "0"), g3sku);
+check("salesman can't generate SKU", call("generateSku", {}, RAVI3, 1).code === "FORBIDDEN");
+check("sku counter hidden from app settings", !("sku_seq" in call("bootstrap", {}, T, 1).data.settings));
 
 // ---- reset test data (keep setup) on a fresh env ----
 const envR = createEnv();

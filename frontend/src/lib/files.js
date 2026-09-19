@@ -77,8 +77,55 @@ export function downloadText(filename, text, mime = "text/csv") {
 }
 
 export const IMPORT_TEMPLATE = [
-  "brand,product,category,gender,sale_type,size_label,size_ml,barcode,mrp,sell_price,cost,opening_stock,reorder_level,hsn,gst_rate",
-  "Lattafa,Asad Eau De Parfum,Eau De Parfum,men,packed,100ml,100,6291108735411,3500,1950,1450,6,2,3303,18",
-  "Lattafa,Asad Eau De Parfum,Eau De Parfum,men,packed,30ml,30,,1200,899,600,4,2,3303,18",
-  "Groovy,White Musk Attar,Loose Attar,unisex,loose,Loose (per ml),,,30,25,12,500,100,3303,18",
+  "brand,product,category,gender,sale_type,size_label,size_ml,sku,barcode,mrp,sell_price,cost,opening_stock,reorder_level,hsn,gst_rate",
+  "Lattafa,Asad Eau De Parfum,Eau De Parfum,men,packed,100ml,100,GF-ASAD-100,6291108735411,3500,1950,1450,6,2,3303,18",
+  "Lattafa,Asad Eau De Parfum,Eau De Parfum,men,packed,30ml,30,GF-ASAD-30,,1200,899,600,4,2,3303,18",
+  "Groovy,White Musk Attar,Loose Attar,unisex,loose,Loose (per ml),,,,30,25,12,500,100,3303,18",
 ].join("\n");
+
+/* ---------- product export from the website (Clevup): 58 columns, one row per size ---------- */
+
+// parseCSV turns its headers into name, sale_price, sku, image1, category_1 …
+export const isWebsiteExport = (rows) => rows.length > 0 && "name" in rows[0] && "sale_price" in rows[0] && "sku" in rows[0] && !("product" in rows[0]);
+
+const GENDER = { female: "women", women: "women", woman: "women", male: "men", men: "men", man: "men", unisex: "unisex" };
+
+/**
+ * Maps website rows onto our import fields. Only what the shop uses is taken (price, MRP, size, barcode, SKU,
+ * GST, brand, gender, HSN, first image, quantity); descriptions, SEO and the rest are left out.
+ * The category is guessed (attar → Packed Attar, otherwise Eau De Parfum) and used only for NEW products.
+ */
+export function fromWebsiteExport(rows) {
+  const out = [];
+  const skipped = [];
+  rows.forEach((r, i) => {
+    if (String(r.sale_price_tax_included).toLowerCase() === "false") {
+      skipped.push({ row: i + 2, message: `${r.name || "Row"} ${r.size || ""}: sale price without tax isn't supported — fix it on the website or add it by hand` });
+      return;
+    }
+    const size = String(r.size || "").trim();
+    const ml = /^(\d+(?:\.\d+)?)\s*ml$/i.exec(size);
+    const num = (v) => (v === undefined || v === "" || Number(v) === 0 ? "" : String(Number(v)));
+    const tags = [r.name, ...[1, 2, 3, 4, 5].flatMap((n) => [r["category_" + n], r["sub_category_" + n]])].join(" ");
+    out.push({
+      _row: i + 2, // line in the file, so problems point to the right row
+      product: r.name,
+      brand: r.brand,
+      sku: r.sku,
+      barcode: r.barcode,
+      size_label: ml ? ml[1] + "ml" : size,
+      size_ml: ml ? ml[1] : "",
+      sell_price: r.sale_price,
+      mrp: num(r.mrp),
+      cost: num(r.purchase_price),
+      gst_rate: (/(\d+(?:\.\d+)?)\s*%/.exec(r.tax || "") || [])[1] || "",
+      hsn: r.hsn,
+      gender: GENDER[String(r.gender || "").trim().toLowerCase()] || "",
+      image: r.image1,
+      opening_stock: num(r.quantity), // used only when the import creates the size
+      sale_type: String(r.measuring_unit || "").trim().toLowerCase() === "ml" ? "loose" : "",
+      new_category: /attar/i.test(tags) ? "Packed Attar" : "Eau De Parfum",
+    });
+  });
+  return { rows: out, skipped };
+}

@@ -43,7 +43,7 @@ function publicSettings_(ctx) {
     const out = {};
     const admin = !ctx || ctx.user.role === "admin";
     Object.keys(s).forEach((k) => {
-        if (k.indexOf("inv_seq_") === 0 || k.indexOf("cn_seq_") === 0 || k === "internal_barcode_seq") return;
+        if (k.indexOf("inv_seq_") === 0 || k.indexOf("cn_seq_") === 0 || k === "internal_barcode_seq" || k === "sku_seq") return;
         if (k === "report_emails" && !admin) return;
         out[k] = s[k];
     });

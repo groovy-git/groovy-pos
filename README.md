@@ -116,11 +116,13 @@ The app prints an **80 mm receipt** or an **A4 tax invoice** using the phone's o
 3. Add products. Either:
     - **Stock → Import**: download the template, fill it in Excel or Google Sheets, then upload it as CSV (**delete the template's sample rows first**). One row per size; rows with the same brand + product become sizes of one product.
         - **Required:** `product`, `category`, `sell_price`, and `size_label` for packed items.
-        - **Optional:** `brand`, `gender` (men/women/unisex), `sale_type` (packed, or loose for attar sold per ml), `size_ml` (only for sorting sizes), `barcode` (must be unique), `mrp`, `cost`, `opening_stock` (goes to the branch you're working at), `reorder_level` (low-stock alert), `hsn` and `gst_rate` (default from the category), `image` (picture link), `sku`.
+        - **Optional:** `sku` (your item code, unique), `brand`, `gender` (men/women/unisex), `sale_type` (packed, or loose for attar sold per ml), `size_ml` (only for sorting sizes), `barcode` (must be unique), `mrp`, `cost`, `opening_stock` (goes to the branch you're working at), `reorder_level` (low-stock alert), `hsn` and `gst_rate` (default from the category), `image` (picture link), `sku`.
         - **Uploading again is safe.** A row that matches an existing size (same barcode, or same brand + product + size) **updates** its prices and details instead of adding a copy; blank cells keep the current value. Opening stock is only used for **new** sizes, so use **Stock In** for more stock.
         - Rows with a problem are skipped and listed (e.g. a barcode that belongs to a different product); the other rows still import.
+        - **SKU** (your item code) works like the barcode: a row with a known SKU updates that size even if the name in the file is different — the name in the app is kept. SKUs must be unique; you can see and edit them on **Add/Edit product**, where the **#** button generates the next one in your website's `SKU-####` series. Use the same SKU on the website for that product.
+        - **Website export:** you can upload the product export from your website (Clevup) exactly as downloaded. The app recognises it and uses SKU, barcode, name, size, sale price, MRP, purchase price, GST, brand, gender, HSN, the first image and quantity (as opening stock for new items only). New products go to **Packed Attar** if the name or website categories mention "attar", otherwise to **Eau De Parfum**; change it later if needed. Rows whose sale price excludes tax are skipped and listed.
     - **Stock → Add product**: scan the box barcode. For items without a barcode (loose attar, decants, bottles), tap the magic-wand button next to the barcode box to generate one.
-4. **Stock → Stock In**: scan the boxes you receive. Scanning the same box again adds 1. On **Add product**, scanning a box that already exists adds 1 to its stock straight away (saved immediately, no list). Use **Stock In** for a whole delivery with costs.
+4. **Stock → Stock In**: scan the boxes you receive. Scanning the same box again adds 1. On **Add product**, scanning only fills the Barcode box — to add stock always use **Stock In**.
 5. Make a test sale, then **void** it from **Sales → bill → Void bill**. Voiding is only possible on the same day.
 
 **Daily use**
@@ -249,7 +251,7 @@ Every bill is also kept as an A4 PDF in your Google Drive:
 
 ```
 backend/   Apps Script (.gs): api.gs (doPost + role ACL), auth, catalog, inventory, sales, reports…
-  dev/     mock-gas.js (in-memory Apps Script + Sheets), e2e.js (321 checks), server.js (local API)
+  dev/     mock-gas.js (in-memory Apps Script + Sheets), e2e.js (351 checks), server.js (local API)
 frontend/  Vite + React PWA: src/pages (screens), src/lib (api, GST cart maths, printing), src/hooks (scanners)
 ```
 

@@ -144,6 +144,26 @@ function assertBarcodesUnique_(list) {
     });
 }
 
+// SKU (e.g. from the website) is a key like the barcode: one size each, compared ignoring case
+function assertSkusUnique_(list) {
+    const bySku = {};
+    rows_("Variants").forEach((v) => {
+        if (v.sku) bySku[String(v.sku).toUpperCase()] = v;
+    });
+    const seen = {};
+    list.forEach((x) => {
+        if (!x.sku_given || !x.sku) return;
+        const k = x.sku.toUpperCase();
+        if (seen[k]) fail_("SKU " + x.sku + " is repeated");
+        seen[k] = true;
+        const ex = bySku[k];
+        if (ex && ex.id !== Number(x.id || 0)) {
+            const prod = findBy_("Products", "id", ex.product_id);
+            fail_("SKU " + x.sku + " already belongs to " + (prod ? prod.name : "another item") + " " + ex.size_label);
+        }
+    });
+}
+
 function cleanVariant_(v, saleType) {
     const loose = saleType === "loose";
     const out = {
@@ -153,6 +173,7 @@ function cleanVariant_(v, saleType) {
         unit: loose ? "ml" : "pcs",
         barcode: normBarcode_(v.barcode),
         sku: str_(v.sku),
+        sku_given: v.sku !== undefined && v.sku !== null, // older app versions don't send it — keep the saved SKU
         mrp: r2_(num_(v.mrp)),
         sell_price: r2_(num_(v.sell_price)),
         reorder_level: num_(v.reorder_level),
@@ -182,6 +203,7 @@ function apiSaveProduct_(p, ctx) {
     return withLock_(() => {
         if (!findBy_("Categories", "id", Number(p.category_id))) fail_("Please choose a category");
         assertBarcodesUnique_(variantsIn);
+        assertSkusUnique_(variantsIn);
         const now = nowStr_();
         const brandId = p.brand_id ? Number(p.brand_id) : ensureBrand_(p.brand_name);
 
@@ -216,7 +238,7 @@ function apiSaveProduct_(p, ctx) {
                 if (!ex || ex.product_id !== prod.id) fail_("Variant not found");
                 Object.assign(ex, {
                     size_label: v.size_label, size_ml: v.size_ml, unit: v.unit, barcode: v.barcode,
-                    sku: v.sku, mrp: v.mrp, sell_price: v.sell_price, reorder_level: v.reorder_level,
+                    sku: v.sku_given ? v.sku : ex.sku, mrp: v.mrp, sell_price: v.sell_price, reorder_level: v.reorder_level,
                     active: v.active, updated_at: now,
                 });
                 if (v.cost > 0) ex.avg_cost = v.cost;
@@ -299,6 +321,32 @@ function apiDeleteProduct_(p, ctx) {
     });
 }
 
+/**
+ * Next SKU in the website's series (SKU-0001, SKU-0002 …): one above the highest SKU-#### in the app.
+ * The counter is kept too, so a number handed out once is never given again (even if not saved or deleted).
+ */
+function apiGenerateSku_(p, ctx) {
+    return withLock_(() => {
+        const used = {};
+        let high = 0;
+        rows_("Variants").forEach((v) => {
+            const s = String(v.sku || "").toUpperCase();
+            if (!s) return;
+            used[s] = true;
+            const m = /^SKU-(\d+)$/.exec(s);
+            if (m) high = Math.max(high, Number(m[1]));
+        });
+        let n = Math.max(high, num_(setting_("sku_seq"), 0));
+        let sku;
+        do {
+            n++;
+            sku = "SKU-" + pad_(n, 4);
+        } while (used[sku]);
+        setSetting_("sku_seq", n, ctx.user.id);
+        return { data: { sku } };
+    });
+}
+
 function apiGenerateBarcode_(p, ctx) {
     return withLock_(() => {
         const used = {};
@@ -363,9 +411,11 @@ function apiImportCatalog_(p, ctx) {
             prodByKey[prodKey(brandOf(x), x.name)] = x;
         });
         const varByCode = {};
+        const varBySku = {}; // SKU (e.g. SKU-0001 from the website) is a key like the barcode, ignoring case
         const varsByProd = {};
         rows_("Variants").forEach((v) => {
             if (v.barcode) varByCode[v.barcode] = v;
+            if (v.sku) varBySku[String(v.sku).toUpperCase()] = v;
             (varsByProd[v.product_id] = varsByProd[v.product_id] || []).push(v);
         });
 
@@ -400,7 +450,7 @@ function apiImportCatalog_(p, ctx) {
         const mark = (list, o) => list.indexOf(o) < 0 && list.push(o);
 
         input.forEach((r, i) => {
-            const rowNo = i + 2; // header is row 1
+            const rowNo = Number(r._row) || i + 2; // header is row 1; _row = line in the original file
             try {
                 const prodName = str_(r.product);
                 if (!prodName) fail_("Product name missing");
@@ -409,16 +459,26 @@ function apiImportCatalog_(p, ctx) {
                 let prod = prodByKey[key] || null;
                 let match = null;
 
-                // 1. a known barcode identifies the size — but only for the product the row names
+                const sku = str_(r.sku);
+                const skuKey = sku.toUpperCase();
+                const bySku = skuKey ? varBySku[skuKey] || null : null;
+                // 1. a known barcode identifies the size — for the product the row names, or when the SKU agrees too
                 if (code && varByCode[code]) {
                     const v0 = varByCode[code];
+                    if (bySku && bySku !== v0) fail_("Barcode " + code + " and SKU " + sku + " belong to different items");
                     const p0 = prodById[v0.product_id];
-                    if (!p0 || prodKey(brandOf(p0), p0.name) !== key)
+                    const skuAgrees = skuKey && String(v0.sku || "").toUpperCase() === skuKey;
+                    if (!p0 || (prodKey(brandOf(p0), p0.name) !== key && !skuAgrees))
                         fail_("Barcode " + code + " belongs to " + (p0 ? (brandOf(p0) + " " + p0.name).trim() : "another item") + " " + v0.size_label);
                     prod = p0;
                     match = v0;
                 }
-                // 2. same brand + product → same size label (a loose product has one size)
+                // 2. a known SKU identifies the size even if the name differs (the app's name is kept)
+                if (!match && bySku) {
+                    match = bySku;
+                    prod = prodById[bySku.product_id] || prod;
+                }
+                // 3. same brand + product → same size label (a loose product has one size)
                 if (!match && prod) {
                     const sizes = varsByProd[prod.id] || [];
                     match = prod.sale_type === "loose" ? sizes[0] || null : sizes.find((v) => sizeKey(v.size_label) === sizeKey(r.size_label)) || null;
@@ -429,6 +489,7 @@ function apiImportCatalog_(p, ctx) {
                 if (match) {
                     if (match._new) fail_("Repeats an earlier row (same product and size)");
                     if (code && match.barcode && code !== match.barcode) fail_("Size " + match.size_label + " already has barcode " + match.barcode);
+                    if (skuKey && match.sku && String(match.sku).toUpperCase() !== skuKey) fail_("Size " + match.size_label + " already has SKU " + match.sku);
                     // blank cells keep the current value; cleanVariant_ validates the result
                     const v = cleanVariant_(
                         {
@@ -445,6 +506,7 @@ function apiImportCatalog_(p, ctx) {
                     const nextVar = {
                         size_ml: v.size_ml, barcode: v.barcode, mrp: v.mrp, sell_price: v.sell_price,
                         reorder_level: v.reorder_level, avg_cost: v.cost > 0 ? v.cost : match.avg_cost,
+                        sku: match.sku || sku, // a size without SKU gets the file's
                     };
                     const nextProd = {};
                     if (!prod._new) {
@@ -460,6 +522,7 @@ function apiImportCatalog_(p, ctx) {
                         Object.assign(match, nextVar, { updated_at: now });
                         mark(changedVars, match);
                         if (v.barcode) varByCode[v.barcode] = match;
+                        if (match.sku) varBySku[String(match.sku).toUpperCase()] = match;
                     }
                     if (prodDiff) {
                         Object.assign(prod, nextProd, { updated_at: now });
@@ -481,7 +544,7 @@ function apiImportCatalog_(p, ctx) {
                     saleType,
                 );
                 if (!prod) {
-                    const catName = str_(r.category);
+                    const catName = str_(r.category) || str_(r.new_category); // new_category: guess from the website export, new products only
                     if (!catName) fail_("Category missing");
                     const cat = catFor(catName, r);
                     prod = {
@@ -503,6 +566,7 @@ function apiImportCatalog_(p, ctx) {
                 newVars.push(row);
                 (varsByProd[prod.id] = varsByProd[prod.id] || []).push(row);
                 if (v.barcode) varByCode[v.barcode] = row;
+                if (row.sku) varBySku[row.sku.toUpperCase()] = row;
                 if (v.opening_stock > 0)
                     moves.push({
                         id: mid++, variant_id: row.id, type: "opening", qty: v.opening_stock, unit_cost: v.cost,

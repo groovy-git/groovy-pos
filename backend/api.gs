@@ -53,6 +53,7 @@ function actions_() {
     deleteProduct: { fn: apiDeleteProduct_, roles: A_ },
     saveInvoicePdf: { fn: apiSaveInvoicePdf_, roles: ALL_ },
     generateBarcode: { fn: apiGenerateBarcode_, roles: AM_ },
+    generateSku: { fn: apiGenerateSku_, roles: AM_ },
     uploadImage: { fn: apiUploadImage_, roles: AM_ },
     importCatalog: { fn: apiImportCatalog_, roles: AM_ },
     stockIn: { fn: apiStockIn_, roles: AM_ },
