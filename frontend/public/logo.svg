@@ -1,8 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Groovy Fragrances">
   <circle cx="256" cy="256" r="256" fill="#F5BF03"/>
-  <!-- the trademark mark rides with the wordmark: a fixed position would collide with the Y on any
-       device whose serif is wider or narrower than Georgia -->
-  <text x="262" y="268" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="90" fill="#141414">GROOVY<tspan font-size="26" dy="-48">™</tspan></text>
+  <text x="252" y="268" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="90" fill="#141414">GROOVY</text>
+  <!-- circled TM, clear of the Y. The wordmark ends at x=467 in Georgia, so anything left of ~470
+       lands on top of it; the earlier cx=420 is why it collided. Sizes follow the real logo:
+       radius and offsets are 0.17 / 0.23 / 0.17 of the 66px cap height. -->
+  <circle cx="480" cy="192" r="13.5" fill="none" stroke="#141414" stroke-width="2.2"/>
+  <text x="480" y="197" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="13.5" fill="#141414">TM</text>
   <line x1="150" y1="296" x2="354" y2="296" stroke="#141414" stroke-width="3"/>
   <text x="252" y="342" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="38" fill="#141414">Fragrances</text>
 </svg>

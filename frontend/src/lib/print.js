@@ -111,7 +111,9 @@ export function receiptHtml(d, s) {
 // the app logo, inline so a printed bill never waits for (or misses) a download
 const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="52" height="52">
   <circle cx="256" cy="256" r="256" fill="#F5BF03"/>
-  <text x="262" y="268" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="90" fill="#141414">GROOVY<tspan font-size="26" dy="-48">™</tspan></text>
+  <text x="252" y="268" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="90" fill="#141414">GROOVY</text>
+  <circle cx="480" cy="192" r="13.5" fill="none" stroke="#141414" stroke-width="2.2"/>
+  <text x="480" y="197" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="13.5" fill="#141414">TM</text>
   <line x1="150" y1="296" x2="354" y2="296" stroke="#141414" stroke-width="3"/>
   <text x="252" y="342" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="38" fill="#141414">Fragrances</text>
 </svg>`;
