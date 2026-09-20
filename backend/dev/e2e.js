@@ -241,6 +241,48 @@ ok(call("resetPassword", { email: "sameer@x.in", otp, password: "newpass1" }), "
 check("old session ended", call("getCatalog", {}, S1).code === "AUTH_EXPIRED");
 ok(call("login", { email: "sameer@x.in", password: "newpass1" }), "login new pwd");
 
+// The reply must never reveal whether an address is a real account, and neither must the limits:
+// if they only fired for real accounts, the error itself would be the giveaway.
+const cacheClear = () => require("vm").runInContext("CacheService.getScriptCache().removeAll(['otp_sent_nobody@x.in','otp_day_nobody@x.in','otp_sent_sameer@x.in','otp_day_sameer@x.in'])", ctx);
+cacheClear();
+const mailsBefore = env.mails.length;
+const unknown1 = call("forgotPassword", { email: "nobody@x.in" });
+const known1 = call("forgotPassword", { email: "sameer@x.in" });
+check("unknown address gets the same answer as a real one", unknown1.success && unknown1.message === known1.message, { unknown: unknown1.message, known: known1.message });
+check("no email is sent for an unknown address", env.mails.length === mailsBefore + 1, env.mails.length - mailsBefore);
+const unknown2 = call("forgotPassword", { email: "nobody@x.in" });
+const known2 = call("forgotPassword", { email: "sameer@x.in" });
+check("the wait message is identical for both, so it gives nothing away",
+    !unknown2.success && !known2.success && unknown2.message === known2.message, { unknown: unknown2.message, known: known2.message });
+// the burst cap stops the send quota being drained — and it applies to unknown addresses too,
+// so it cannot be used to tell a real account from a made-up one
+cacheClear();
+let capped = null;
+for (let i = 0; i < 12 && !capped; i++) {
+    require("vm").runInContext("CacheService.getScriptCache().remove('otp_sent_nobody@x.in')", ctx); // skip the 60s spacing
+    const r = call("forgotPassword", { email: "nobody@x.in" });
+    if (!r.success) capped = { at: i + 1, message: r.message };
+}
+check("a burst of requests is capped at 10, even for an unknown address", capped && capped.at === 11, capped);
+require("vm").runInContext("CacheService.getScriptCache().removeAll(['otp_sent_sameer@x.in','otp_day_sameer@x.in'])", ctx);
+check("the cap is per address — someone else is unaffected", call("forgotPassword", { email: "sameer@x.in" }).success);
+
+// ---- the Sheet's own password reset: the way back in when email is no help ----
+// its own account, so resetting it cannot disturb the tokens the rest of the suite is using
+ok(call("saveUser", { name: "Reset Me", email: "resetme@x.in", role: "salesman", password: "secret7" }, T), "add the account to reset");
+const S3 = ok(call("login", { email: "resetme@x.in", password: "secret7" }), "that account logs in").token;
+const otherStillValid = ok(call("getCatalog", {}, M), "manager token before the reset");
+const rsp = ctx.resetStaffPassword_("RESETME@x.in"); // matched whatever the case
+check("it returns a password and who it belongs to", /^groovy@\d{4}$/.test(rsp.password) && rsp.name === "Reset Me", rsp);
+check("the old password no longer works", !call("login", { email: "resetme@x.in", password: "secret7" }).success);
+ok(call("login", { email: "resetme@x.in", password: rsp.password }), "login with the new password");
+check("that person is signed out everywhere", call("getCatalog", {}, S3).code === "AUTH_EXPIRED");
+check("nobody else is signed out", !!otherStillValid && call("getCatalog", {}, M).success);
+check("a pending reset code is cleared", require("vm").runInContext('resetReqCache_(); (findBy_("Users","email","resetme@x.in").otp || "") === ""', ctx));
+check("an unknown address is refused", (() => { try { ctx.resetStaffPassword_("ghost@x.in"); return false; } catch (e) { return /No staff member/.test(e.message); } })());
+check("the new password is never written to the log",
+    require("vm").runInContext('resetReqCache_(); rows_("Activity_Logs").every((l) => String(l.details).indexOf("groovy@") < 0)', ctx));
+
 // ---- lost replies: retries with the same req_id never save twice ----
 const rqStock = () => call("getCatalog", {}, T, 1).data.variants.find((v) => v.id === vBottle.id).stock_qty;
 const rq0 = rqStock();

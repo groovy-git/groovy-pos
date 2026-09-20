@@ -132,13 +132,25 @@ function apiLogout_(p, ctx) {
 
 function apiForgotPassword_(p) {
     const email = str_(p.email).toLowerCase();
-    const u = findBy_("Users", "email", email);
-    // same answer whether or not the account exists
+    // same answer whether or not the account exists, so nobody can use this to find out which
+    // addresses are real staff accounts and then go after them
     const okMsg = "If this email is registered, a reset code has been sent.";
-    if (!u || !u.active) return { message: okMsg };
 
+    // Both limits are applied to every address, before we know whether it exists. Checking after
+    // would leave unknown addresses unthrottled, and would make the very appearance of these errors
+    // proof that an address is real.
     const cache = CacheService.getScriptCache();
     if (cache.get("otp_sent_" + email)) fail_("Please wait a minute before requesting another code.");
+    // a burst of requests would drain the account's daily send quota and take the nightly
+    // day-close emails down with it. Cache entries cap out at 6 hours, hence the window.
+    const dayKey = "otp_day_" + email;
+    const sentToday = num_(cache.get(dayKey), 0);
+    if (sentToday >= 10) fail_("Too many reset requests. Please try later or ask the owner.");
+    cache.put("otp_sent_" + email, "1", 60);
+    cache.put(dayKey, String(sentToday + 1), 21600);
+
+    const u = findBy_("Users", "email", email);
+    if (!u || !u.active) return { message: okMsg };
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
     withLock_(() => {
@@ -147,7 +159,6 @@ function apiForgotPassword_(p) {
         row.otp_exp = fmtDateTime_(new Date(Date.now() + 10 * 60000));
         updateRows_("Users", [row]);
     });
-    cache.put("otp_sent_" + email, "1", 60);
 
     const biz = setting_("business_name");
     MailApp.sendEmail({

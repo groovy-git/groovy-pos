@@ -11,6 +11,7 @@ function onOpen() {
         .addItem("3. Reset test data (keep setup)…", "resetTestData")
         .addItem("4. Reset EVERYTHING incl. products…", "resetAll")
         .addSeparator()
+        .addItem("Reset a staff password…", "resetStaffPassword")
         .addItem("Log everyone out (after an update)", "logoutEveryone")
         .addItem("Email today's day close now", "emailDayCloseNow")
         .addItem("Run self-tests", "runTests")
@@ -98,6 +99,60 @@ function logoutEveryone() {
     }
     const n = withLock_(() => logoutEveryone_());
     alert_(n ? n + (n === 1 ? " login ended." : " logins ended.") + "\n\nAsk everyone to open the app and log in again." : "Nobody was logged in.");
+}
+
+/**
+ * Hand someone a new password without any email. This is the way back in when the owner forgets
+ * their own — nobody else can reset an admin — and the quickest way to sort out a member of staff.
+ * Only someone who can edit this spreadsheet can run it, which is the root of trust for the app.
+ * Returns the new password so the caller can show it once; it is never written to the log.
+ */
+function resetStaffPassword_(email) {
+    return withLock_(() => {
+        const wanted = str_(email).toLowerCase();
+        const u = rows_("Users").find((x) => String(x.email).toLowerCase() === wanted);
+        if (!u) fail_("No staff member has the email " + email);
+        const pwd = "groovy@" + Math.floor(1000 + Math.random() * 9000);
+        u.salt = newSalt_();
+        u.pwd_hash = hashPwd_(pwd, u.salt);
+        u.otp = ""; // a code that was already on its way must not still work
+        u.otp_exp = "";
+        u.updated_at = nowStr_();
+        updateRows_("Users", [u]);
+        endUserSessions_(u.id); // anyone signed in as them is signed out, as an app password change does
+        log_({ user: { id: 0, name: "Sheet owner" } }, "UPDATE", "Users", u.id, "Password reset for " + u.name);
+        return { name: u.name, role: u.role, active: u.active, password: pwd };
+    });
+}
+
+function resetStaffPassword() {
+    const ui = SpreadsheetApp.getUi();
+    const ask = ui.prompt("Reset a staff password", "Email of the person who needs a new password:", ui.ButtonSet.OK_CANCEL);
+    if (ask.getSelectedButton() !== ui.Button.OK) return;
+    const email = ask.getResponseText().trim();
+    if (!email) return alert_("Nothing was changed.");
+    let who;
+    try {
+        who = rows_("Users").find((x) => String(x.email).toLowerCase() === email.toLowerCase());
+    } catch (e) {
+        return alert_(e.message || String(e));
+    }
+    if (!who) return alert_("No staff member has the email " + email + ".\n\nCheck the Users sheet for the exact address.");
+    const sure = ui.alert(
+        "Reset password",
+        "Give " + who.name + " (" + who.role + ") a new password?\n\nTheir current password stops working at once and they are signed out everywhere.",
+        ui.ButtonSet.YES_NO,
+    );
+    if (sure !== ui.Button.YES) return alert_("Nothing was changed.");
+    try {
+        const r = resetStaffPassword_(email);
+        alert_(
+            "New password for " + r.name + ":\n\n    " + r.password + "\n\nHand this over now — it is not shown again and is not saved anywhere readable.\n" +
+                "Ask them to change it after logging in." + (r.active ? "" : "\n\nNote: this account is deactivated, so they also need reactivating in Staff before they can log in."),
+        );
+    } catch (e) {
+        alert_(e.message || String(e));
+    }
 }
 
 function resetTestData_() {

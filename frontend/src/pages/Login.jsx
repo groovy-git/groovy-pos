@@ -91,7 +91,9 @@ function ForgotSheet({ open, onClose, defaultEmail, toast }) {
             });
           }}
         >
-          <p className="muted small" style={{ marginTop: 0 }}>We'll email a 6-digit code to your registered email.</p>
+          {/* conditional on purpose: the server never says whether an address is registered, so this
+              must not promise a code that a typo will never receive */}
+          <p className="muted small" style={{ marginTop: 0 }}>We'll send a 6-digit code if this email belongs to a staff account.</p>
           <Field label="Email" error={err}>
             <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </Field>
@@ -109,6 +111,11 @@ function ForgotSheet({ open, onClose, defaultEmail, toast }) {
             });
           }}
         >
+          {/* the condition stays on screen: the toast saying it is gone in four seconds, and a typo
+              otherwise leaves you waiting on this step for a code that was never sent */}
+          <p className="muted small" style={{ marginTop: 0 }}>
+            If <b>{email.trim()}</b> is registered, the code is on its way. Nothing in a minute? The address may be wrong.
+          </p>
           <Field label="6-digit code from email">
             <input className="input" inputMode="numeric" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} required />
           </Field>
@@ -116,6 +123,9 @@ function ForgotSheet({ open, onClose, defaultEmail, toast }) {
             <input className="input" type="password" autoComplete="new-password" value={pwd} onChange={(e) => setPwd(e.target.value)} minLength={6} required />
           </Field>
           <Button className="block" loading={busy} type="submit">Change password</Button>
+          <button type="button" className="btn ghost block mt" onClick={() => { setErr(""); setOtp(""); setStep(1); }}>
+            Use a different email
+          </button>
         </form>
       )}
     </Sheet>
