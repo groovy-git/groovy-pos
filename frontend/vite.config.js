@@ -45,9 +45,16 @@ export default defineConfig({
             options: { cacheName: "fonts", expiration: { maxEntries: 20, maxAgeSeconds: 31536000 } },
           },
           {
-            urlPattern: /^https:\/\/(lh3\.googleusercontent\.com|cdn2\.clevup\.in)\/.*/,
+            // every product image, wherever it is hosted — Drive, the website's CDN, or Google storage.
+            // Matching by host missed storage.googleapis.com, so a shop with thousands of products
+            // re-downloaded every thumbnail on every visit.
+            urlPattern: ({ request, url }) => request.destination === "image" && url.protocol === "https:",
             handler: "CacheFirst",
-            options: { cacheName: "product-images", expiration: { maxEntries: 400, maxAgeSeconds: 2592000 } },
+            options: {
+              cacheName: "product-images",
+              expiration: { maxEntries: 3000, maxAgeSeconds: 2592000, purgeOnQuotaError: true },
+              cacheableResponse: { statuses: [0, 200] },
+            },
           },
         ],
       },

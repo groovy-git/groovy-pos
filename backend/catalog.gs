@@ -6,13 +6,26 @@ function isStaffManager_(ctx) {
     return ctx.user.role === "admin" || ctx.user.role === "manager";
 }
 
+/**
+ * The whole catalogue, or nothing when the app already has it.
+ * `catalog_version` + `catalog_branch` say what the app holds. The version changes on every product
+ * edit AND every stock movement, so matching both means the app's copy is still right — and we skip
+ * reading Products, Variants and Branch_Stock entirely. Both are checked: stock is per branch, and a
+ * phone that switched branch must not keep the other branch's figures. An app that sends neither
+ * (an older version) gets the full payload, as before.
+ */
 function apiGetCatalog_(p, ctx) {
+    const version = num_(setting_("catalog_version"), 1);
+    if (p && num_(p.catalog_version) === version && num_(p.catalog_branch) === num_(ctx.branch_id)) {
+        return { data: { version: version, branch_id: num_(ctx.branch_id), unchanged: true } };
+    }
     const showCost = isStaffManager_(ctx);
     const stock = stockMap_(ctx.branch_id); // 0 = all branches → totals
     const byBranch = stockByBranch_();
     return {
         data: {
-            version: num_(setting_("catalog_version"), 1),
+            version: version,
+            branch_id: num_(ctx.branch_id),
             brands: rows_("Brands").map((b) => ({ id: b.id, name: b.name, active: b.active })),
             categories: rows_("Categories").map((c) => ({
                 id: c.id, name: c.name, default_hsn: c.default_hsn, default_gst: c.default_gst,

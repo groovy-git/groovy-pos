@@ -41,6 +41,8 @@ export function AppProvider({ children }) {
   const [cart, setCartState] = useState(() => load(cartKey(getBranch()), load("gp_cart", EMPTY_CART)));
   const [toasts, setToasts] = useState([]);
   const versionRef = useRef(rawCatalog ? rawCatalog.version : 0);
+  const cachedRef = useRef(rawCatalog ? { version: rawCatalog.version, branch: rawCatalog._branch || 0 } : null);
+  const rawCatalogRef = useRef(rawCatalog);
   const branchRef = useRef(branchId);
   const refreshing = useRef(false);
 
@@ -59,11 +61,17 @@ export function AppProvider({ children }) {
   }, []);
   const clearCart = useCallback(() => setCart(EMPTY_CART), [setCart]);
 
-  const applyCatalog = useCallback((c) => {
+  // what the cached catalogue is: which version, and which branch's stock it holds
+  const applyCatalog = useCallback((c, branchId) => {
     versionRef.current = c.version;
-    setRawCatalog(c);
-    save("gp_catalog", c);
+    const next = { ...c, _branch: Number(branchId) || 0 };
+    cachedRef.current = { version: next.version, branch: next._branch };
+    setRawCatalog(next);
+    save("gp_catalog", next);
   }, []);
+
+  // sent with every request so the server can skip the payload when nothing has changed for us
+  const catalogHeld = () => (cachedRef.current ? { catalog_version: cachedRef.current.version, catalog_branch: cachedRef.current.branch } : {});
 
   // switch the phone to a branch: its own stock (next bootstrap) and its own bill in progress
   const applyBranch = useCallback((id) => {
@@ -80,8 +88,8 @@ export function AppProvider({ children }) {
     if (refreshing.current) return;
     refreshing.current = true;
     try {
-      const r = await api("getCatalog");
-      applyCatalog(r.data);
+      const r = await api("getCatalog", catalogHeld());
+      if (!r.data.unchanged) applyCatalog(r.data, r.data.branch_id);
     } catch {
       /* keep cached catalog */
     } finally {
@@ -102,6 +110,8 @@ export function AppProvider({ children }) {
       /* private mode */
     }
     setRawCatalog(null);
+    cachedRef.current = null; // the next person downloads the catalogue fresh
+    rawCatalogRef.current = null;
     setSettings({});
     setUser(null);
     branchRef.current = 0;
@@ -116,8 +126,11 @@ export function AppProvider({ children }) {
         logoutLocal();
         toast("Please log in again", "warn");
       },
+      // every reply carries the server's catalogue version; a higher one means someone else changed
+      // something. Not while the first load is still running — bootstrap is already fetching it, and
+      // asking again here downloaded the whole catalogue a second time on every login.
       version: (cv) => {
-        if (cv > versionRef.current) refreshCatalog();
+        if (cv > versionRef.current && cachedRef.current) refreshCatalog();
       },
     });
   }, [logoutLocal, refreshCatalog, toast]);
@@ -125,18 +138,23 @@ export function AppProvider({ children }) {
   const bootstrap = useCallback(async () => {
     let r;
     try {
-      r = await api("bootstrap");
+      r = await api("bootstrap", catalogHeld());
     } catch (e) {
       if (e.code !== "BRANCH") throw e;
       clearBranch(); // remembered branch no longer allowed → server picks the home branch
-      r = await api("bootstrap");
+      r = await api("bootstrap", catalogHeld());
     }
     const d = r.data;
+    // the server says our copy is still current and kept the payload out of the reply
+    if (d.catalog.unchanged && !rawCatalogRef.current) {
+      cachedRef.current = null; // nothing to keep — ask again for the real thing
+      d.catalog = (await api("getCatalog", {})).data;
+    }
     setUser(d.user);
     setSettings(d.settings);
     setSellers(d.sellers);
     setBranches(d.branches);
-    applyCatalog(d.catalog);
+    if (!d.catalog.unchanged) applyCatalog(d.catalog, d.branch_id);
     applyBranch(d.branch_id);
     save("gp_user", d.user);
     save("gp_settings", d.settings);
@@ -221,6 +239,10 @@ export function AppProvider({ children }) {
     },
     [applyBranch, bootstrap, toast, user, branches],
   );
+
+  useEffect(() => {
+    rawCatalogRef.current = rawCatalog; // read by bootstrap, which runs outside render
+  }, [rawCatalog]);
 
   const catalog = useMemo(() => buildCatalog(rawCatalog), [rawCatalog]);
 

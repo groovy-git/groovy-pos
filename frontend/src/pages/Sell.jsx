@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Clock, SearchX } from "lucide-react";
 import { useApp } from "../store";
 import TopBar from "../components/TopBar";
@@ -7,6 +7,7 @@ import { Chips, Empty, SearchBar } from "../components/ui";
 import { NeedBranch } from "../components/Branch";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
 import { searchItems, lookupBarcode, imageUrl } from "../lib/catalog";
+import { PAGE, MIN_SEARCH, useSearchQuery, useMoreOnScroll } from "../lib/listing";
 import { addLine, computeBill, qtyInCart } from "../lib/cart";
 import { beepError, beepOk, unlockAudio } from "../lib/feedback";
 import { inr, initials } from "../lib/format";
@@ -19,6 +20,8 @@ import HeldSheet from "./sell/HeldSheet";
 export default function Sell() {
   const { catalog, cart, setCart, settings, toast, isAllBranches } = useApp();
   const [q, setQ] = useState("");
+  const query = useSearchQuery(q);
+  const [drawn, setDrawn] = useState(PAGE);
   const [cat, setCat] = useState("all");
   const [scanOpen, setScanOpen] = useState(false);
   const [sheet, setSheet] = useState(null); // cart | checkout | held
@@ -35,10 +38,14 @@ export default function Sell() {
 
   const shown = useMemo(() => {
     let list = cat === "all" ? sellable : sellable.filter((i) => i.category_id === cat);
-    list = searchItems(list, q);
+    list = searchItems(list, query);
     // in-stock first
     return [...list.filter((i) => i.stock > 0), ...list.filter((i) => i.stock <= 0)];
-  }, [sellable, cat, q]);
+  }, [sellable, cat, query]);
+
+  // a new search or category starts from the top again
+  useEffect(() => setDrawn(PAGE), [query, cat]);
+  const more = useMoreOnScroll(drawn < shown.length, () => setDrawn((n) => n + PAGE));
 
   // add qty (merges with an existing line); returns {ok,label} for scan feedback
   const addQty = (item, qty) => {
@@ -133,18 +140,21 @@ export default function Sell() {
         <div className="mt">
           <Chips options={catOptions} value={cat} onChange={setCat} />
         </div>
+        {q.trim().length > 0 && q.trim().length < MIN_SEARCH && (
+          <div className="small muted mt center">Type at least {MIN_SEARCH} letters to search, or scan the barcode</div>
+        )}
 
         {shown.length === 0 ? (
           <Empty icon={SearchX} title="No products found" text={q ? "Try a different word, or scan the barcode." : "Add products in Stock first."} />
         ) : (
           <div className="pgrid mt">
-            {shown.slice(0, 200).map((it) => {
+            {shown.slice(0, drawn).map((it) => {
               const inCart = qtyInCart(cart.lines, it.id);
               return <ProductCard key={it.id} item={it} inCart={inCart} onTap={() => tap(it)} />;
             })}
           </div>
         )}
-        {shown.length > 200 && <div className="muted small center mt">Showing 200 of {shown.length}. Search to narrow down.</div>}
+        {drawn < shown.length && <div ref={more} className="muted small center mt">Showing {drawn} of {shown.length} — keep scrolling, or search to narrow down.</div>}
       </div>
 
       {cart.lines.length > 0 && !sheet && (

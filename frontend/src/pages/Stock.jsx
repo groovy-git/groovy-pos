@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { runBusy } from "../lib/busy";
 import { navigate, useRoute } from "../lib/router";
 import { searchItems, lookupBarcode } from "../lib/catalog";
+import { PAGE, MIN_SEARCH, useSearchQuery, useMoreOnScroll } from "../lib/listing";
 import { inr, fmtDateTime, qtyLabel, r3, plural } from "../lib/format";
 import { beepError, beepOk } from "../lib/feedback";
 import { parseCSV, downloadText, IMPORT_TEMPLATE, isWebsiteExport, fromWebsiteExport } from "../lib/files";
@@ -44,6 +45,8 @@ function Products() {
   const route = useRoute();
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState(route.params.get("filter") || "all");
+  const query = useSearchQuery(q);
+  const [shown, setShown] = useState(PAGE);
   const [scan, setScan] = useState(false);
   const [open, setOpen] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -55,8 +58,12 @@ function Products() {
     else if (filter === "out") l = l.filter((i) => i.active && i.stock <= 0);
     else if (filter === "hidden") l = l.filter((i) => !i.active);
     else l = l.filter((i) => i.active);
-    return searchItems(l, q);
-  }, [catalog, q, filter]);
+    return searchItems(l, query);
+  }, [catalog, query, filter]);
+
+  // a new search or pill starts from the top again
+  useEffect(() => setShown(PAGE), [query, filter]);
+  const more = useMoreOnScroll(shown < list.length, () => setShown((n) => n + PAGE));
 
   const onCode = (code) => {
     const it = lookupBarcode(catalog, code);
@@ -111,11 +118,15 @@ function Products() {
         </div>
       )}
 
+      {q.trim().length > 0 && q.trim().length < MIN_SEARCH && (
+        <div className="small muted mt center">Type at least {MIN_SEARCH} letters to search</div>
+      )}
+
       {list.length === 0 ? (
-        <Empty icon={Boxes} title="No products" text={q ? "Nothing matches your search." : isManager ? "Add your first product with the + button." : ""} />
+        <Empty icon={Boxes} title="No products" text={query ? "Nothing matches your search." : isManager ? "Add your first product with the + button." : ""} />
       ) : (
         <div className="list mt">
-          {list.slice(0, 300).map((it) => (
+          {list.slice(0, shown).map((it) => (
             <button key={it.id} className="list-item" onClick={() => setOpen(it)}>
               <Thumb item={it} />
               <div className="grow">
@@ -128,6 +139,10 @@ function Products() {
               <StockBadge item={it} />
             </button>
           ))}
+          {shown < list.length && <div ref={more} className="small muted center" style={{ padding: "12px 0" }}>Loading more…</div>}
+          <div className="small muted center" style={{ padding: "8px 0" }}>
+            {shown < list.length ? `Showing ${shown} of ${plural("product", list.length)}` : plural("product", list.length)}
+          </div>
         </div>
       )}
 

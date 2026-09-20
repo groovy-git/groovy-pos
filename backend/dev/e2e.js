@@ -755,6 +755,27 @@ const rstSale = envR.call("completeSale", { client_ref: "r-2", lines: [{ variant
 check("reset: bill numbers restart", rstSale.success && /\/00001$/.test(rstSale.data.sale.invoice_no), rstSale);
 check("reset: stock works after", envR.call("getCatalog", {}, RT2).data.variants.find((v) => v.id === rVid).stock_qty === 2);
 
+// ---- an unchanged catalogue is not sent again (the whole payload is the app's biggest download) ----
+const cv = envR.call("getCatalog", {}, RT2).data;
+check("catalogue reply says which branch its stock is for", cv.branch_id !== undefined, cv.branch_id);
+const same = envR.call("getCatalog", { catalog_version: cv.version, catalog_branch: cv.branch_id }, RT2).data;
+check("same version + branch: payload skipped", same.unchanged === true && !same.variants && !same.products && same.version === cv.version, same);
+const older = envR.call("getCatalog", { catalog_version: cv.version - 1, catalog_branch: cv.branch_id }, RT2).data;
+check("older version: full payload", !older.unchanged && Array.isArray(older.variants) && older.variants.length > 0);
+check("no version sent (an older app): full payload", !envR.call("getCatalog", {}, RT2).data.unchanged);
+// stock is per branch, so the same version at a different branch must still send the figures
+const otherBranch = envR.call("getCatalog", { catalog_version: cv.version, catalog_branch: cv.branch_id + 99 }, RT2).data;
+check("same version, different branch: full payload", !otherBranch.unchanged && Array.isArray(otherBranch.variants));
+// a sale moves stock, and the version moves with it, so the app is told to refetch
+envR.call("completeSale", { client_ref: "r-4", lines: [{ variant_id: rVid, qty: 1 }], payments: [{ method: "cash", amount: 400 }] }, RT2, 1);
+const afterSale = envR.call("getCatalog", { catalog_version: cv.version, catalog_branch: cv.branch_id }, RT2).data;
+check("after a sale: payload sent again, with the new stock",
+    !afterSale.unchanged && afterSale.version > cv.version &&
+    afterSale.variants.find((v) => v.id === rVid).stock_qty === cv.variants.find((v) => v.id === rVid).stock_qty - 1, afterSale.version);
+// bootstrap carries the same gate, since that is what the app calls on open
+const bootGate = envR.call("bootstrap", { catalog_version: afterSale.version, catalog_branch: afterSale.branch_id }, RT2, 1).data;
+check("bootstrap skips an unchanged catalogue too", bootGate.catalog.unchanged === true && !bootGate.catalog.variants && !!bootGate.settings && !!bootGate.user, bootGate.catalog);
+
 // ---- log everyone out: ends logins and touches nothing else ----
 const beforeOut = {
     version: envR.call("getCatalog", {}, RT2).data.version,
