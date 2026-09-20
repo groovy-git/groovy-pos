@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, UserCog } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
@@ -6,6 +6,8 @@ import { runBusy } from "../lib/busy";
 import { ROLE_LABEL } from "../lib/format";
 import TopBar from "../components/TopBar";
 import { Avatar, Button, Empty, Field, Seg, Sheet, SkeletonList, useConfirm } from "../components/ui";
+
+const ROLE_ORDER = { admin: 0, manager: 1, salesman: 2 };
 
 export default function UsersPage() {
   const { toast, user, setSellers, branches, multiBranch } = useApp();
@@ -24,6 +26,21 @@ export default function UsersPage() {
     load();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // active first, then admins, managers, salesmen, then by name. An unknown role sorts last rather
+  // than breaking the page. The copy is because sort() would otherwise mutate state in place.
+  const ordered = useMemo(
+    () =>
+      list
+        ? [...list].sort(
+            (a, b) =>
+              (a.active ? 0 : 1) - (b.active ? 0 : 1) ||
+              (ROLE_ORDER[a.role] ?? 9) - (ROLE_ORDER[b.role] ?? 9) ||
+              String(a.name || "").localeCompare(String(b.name || "")),
+          )
+        : null,
+    [list],
+  );
+
   return (
     <>
       <TopBar title="Staff" back="more" />
@@ -33,11 +50,11 @@ export default function UsersPage() {
         </p>
         {!list ? (
           <SkeletonList />
-        ) : list.length === 0 ? (
+        ) : ordered.length === 0 ? (
           <Empty icon={UserCog} title="No staff" />
         ) : (
           <div className="list">
-            {list.map((u) => (
+            {ordered.map((u) => (
               <button key={u.id} className="list-item" onClick={() => setEdit(u)} style={u.active ? null : { opacity: 0.55 }}>
                 <Avatar name={u.name} gold={u.role === "admin"} />
                 <div className="grow">
