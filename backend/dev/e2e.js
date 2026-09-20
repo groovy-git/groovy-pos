@@ -728,6 +728,64 @@ const rstSale = envR.call("completeSale", { client_ref: "r-2", lines: [{ variant
 check("reset: bill numbers restart", rstSale.success && /\/00001$/.test(rstSale.data.sale.invoice_no), rstSale);
 check("reset: stock works after", envR.call("getCatalog", {}, RT2).data.variants.find((v) => v.id === rVid).stock_qty === 2);
 
+// ---- log everyone out: ends logins and touches nothing else ----
+const beforeOut = {
+    version: envR.call("getCatalog", {}, RT2).data.version,
+    variants: rRun('rows_("Variants").map((v) => v.id + ":" + v.stock_qty).join(",")'),
+    sales: rRun('rows_("Sales").length'),
+    products: rRun('rows_("Products").length'),
+};
+const ended = envR.ctx.logoutEveryone_();
+check("logout all: sessions ended", ended >= 1 && rRun('rows_("Sessions").length === 0'), ended);
+check("logout all: old token rejected", envR.call("getCatalog", {}, RT2).code === "AUTH_EXPIRED");
+const RT3 = envR.call("login", { email: "owner@groovy.test", password: rPwd }).data.token;
+check("logout all: nothing else moved",
+    envR.call("getCatalog", {}, RT3).data.version === beforeOut.version &&
+    rRun('rows_("Variants").map((v) => v.id + ":" + v.stock_qty).join(",")') === beforeOut.variants &&
+    rRun('rows_("Sales").length') === beforeOut.sales && rRun('rows_("Products").length') === beforeOut.products, beforeOut);
+check("logout all: app works after logging in again",
+    envR.call("completeSale", { client_ref: "r-3", lines: [{ variant_id: rVid, qty: 1 }], payments: [{ method: "cash", amount: 400 }] }, RT3).success);
+
+// ---- reset EVERYTHING: the catalogue goes too, the shop setup stays ----
+const envA = createEnv();
+envA.ctx.setupSheets();
+const aPwd = /Password: (\S+)/.exec(envA.alerts.pop())[1];
+const AT = envA.call("login", { email: "owner@groovy.test", password: aPwd }).data.token;
+const aRun = (code) => require("vm").runInContext("resetReqCache_(); " + code, envA.ctx);
+envA.call("saveSettings", { settings: { business_name: "Groovy Erase Test" } }, AT);
+const aCat = envA.call("getCatalog", {}, AT).data.categories[0].id;
+envA.call("saveProduct", {
+    name: "Erase Oud", brand_name: "Groovy", category_id: aCat, hsn: "3303", gst_rate: 18,
+    variants: [{ size_label: "50ml", barcode: "ERS001", mrp: 500, sell_price: 400, cost: 200, opening_stock: 5 }],
+}, AT);
+const aVid = envA.call("getCatalog", {}, AT).data.variants.find((v) => v.barcode === "ERS001").id;
+envA.call("generateBarcode", {}, AT);
+const aBc = String(aRun('setting_("internal_barcode_seq")'));
+check("erase: test data created",
+    envA.call("completeSale", { client_ref: "a-1", lines: [{ variant_id: aVid, qty: 1 }], payments: [{ method: "cash", amount: 400 }] }, AT).success &&
+    envA.call("saveExpense", { title: "Tea", amount: 20, method: "cash" }, AT).success);
+const aVer = envA.call("getCatalog", {}, AT).data.version;
+const aRes = envA.ctx.resetAll_();
+check("erase: catalogue emptied", aRun('["Variants", "Products", "Brands"].every((n) => rows_(n).length === 0)'), aRes);
+check("erase: day-to-day tabs emptied too", aRun('RESET_TABS_.filter((n) => n !== "Activity_Logs").every((n) => rows_(n).length === 0)'));
+check("erase: standard categories restored, not left empty",
+    aRun("rows_(\"Categories\").length") === require("vm").runInContext("DEFAULT_CATEGORIES.length", envA.ctx), aRun('rows_("Categories").length'));
+check("erase: staff, branches and settings kept",
+    aRun('rows_("Users").length === 1 && rows_("Branches").length >= 1 && setting_("business_name") === "Groovy Erase Test"'));
+check("erase: barcode counter kept, so printed labels stay unique", aRun('String(setting_("internal_barcode_seq"))') === aBc);
+check("erase: old login rejected", envA.call("getCatalog", {}, AT).code === "AUTH_EXPIRED");
+const AT2 = envA.call("login", { email: "owner@groovy.test", password: aPwd }).data.token;
+check("erase: catalog version bumped", envA.call("getCatalog", {}, AT2).data.version > aVer);
+// the shop can be built again from nothing
+const aProd2 = envA.call("saveProduct", {
+    name: "Fresh Start", brand_name: "New Brand", category_id: envA.call("getCatalog", {}, AT2).data.categories[0].id, gst_rate: 18,
+    variants: [{ size_label: "30ml", sell_price: 300, mrp: 300, opening_stock: 4 }],
+}, AT2, 1);
+check("erase: a product can be added again", aProd2.success, aProd2);
+const aVid2 = envA.call("getCatalog", {}, AT2).data.variants[0].id;
+const aSale = envA.call("completeSale", { client_ref: "a-2", lines: [{ variant_id: aVid2, qty: 1 }], payments: [{ method: "cash", amount: 300 }] }, AT2, 1);
+check("erase: bill numbers restart at 00001", aSale.success && /\/00001$/.test(aSale.data.sale.invoice_no), aSale);
+
 // ---- demo seed on a fresh env ----
 const env2 = createEnv();
 env2.ctx.setupSheets();

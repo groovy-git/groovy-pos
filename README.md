@@ -210,6 +210,7 @@ Every bill is also kept as an A4 PDF in your Google Drive:
     Always use **Edit** so the URL stays the same. A new deployment gets a new URL, and the app would stop reaching the backend.
 
 - **App** (`frontend/`): push to `main`. GitHub rebuilds it, and phones pick up the update the next time the app is opened. The rebuild runs by itself only when something in `frontend/` changes.
+- **Pushing everyone onto the new version:** **Groovy POS → Log everyone out (after an update)**. Everyone signs in again on their next tap, which in practice means a fresh load of the app. Nothing else is touched — no bills, stock, products or settings. The app does update itself on the next open either way, and the backend is live for everyone the moment you deploy it, so this is a nudge rather than a requirement.
 - **If the web app URL ever changes** (for example you made a _new_ deployment instead of editing): update the `VITE_API_URL` variable, then go to **Actions → Deploy app to GitHub Pages → Run workflow**.
 
 ## Good practice
@@ -226,6 +227,7 @@ Every bill is also kept as an A4 PDF in your Google Drive:
     - It keeps products and prices, categories, brands, staff, branches and shop settings.
     - Everyone is logged out. Log in again on each phone, then enter your real stock with **Stock In**.
     - This can’t be undone, which is why you make the copy first.
+- **Starting over completely:** **Groovy POS → 4. Reset EVERYTHING incl. products…** and type `ERASE ALL`. It does everything above **and** deletes every product, size, brand and category — prices, SKUs and barcodes included. Staff, branches and shop settings are kept, and the standard categories come back empty so you can add products straight away. Back up first; there is no undo.
 - **Do a pilot day before going live.** Use a copy with demo data and try everything once:
     - the camera and the Bluetooth scanner;
     - the printer;

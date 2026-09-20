@@ -9,7 +9,9 @@ function onOpen() {
         .addItem("1. Setup / repair sheets", "setupSheets")
         .addItem("2. Load demo data (test copy only)", "seedDemo")
         .addItem("3. Reset test data (keep setup)…", "resetTestData")
+        .addItem("4. Reset EVERYTHING incl. products…", "resetAll")
         .addSeparator()
+        .addItem("Log everyone out (after an update)", "logoutEveryone")
         .addItem("Email today's day close now", "emailDayCloseNow")
         .addItem("Run self-tests", "runTests")
         .addItem("Show web app URL", "showWebAppUrl")
@@ -24,6 +26,10 @@ const RESET_TABS_ = [
     "Expenses", "Customers", "Stock_Movements", "Stock_In_Batches", "Transfers", "Branch_Stock",
     "Activity_Logs", "Sessions",
 ];
+
+// the catalogue — kept by "reset test data" (it is the work you want to survive going live) and
+// cleared only by "reset everything", which starts the shop from nothing
+const CATALOG_TABS_ = ["Variants", "Products", "Brands", "Categories"];
 
 function resetTestData() {
     const ui = SpreadsheetApp.getUi();
@@ -50,12 +56,53 @@ function resetTestData() {
     );
 }
 
+/** The standard categories, written only when there are none. Returns how many were added. */
+function seedDefaultCategories_() {
+    if (rows_("Categories").length) return 0;
+    const now = nowStr_();
+    appendRows_(
+        "Categories",
+        DEFAULT_CATEGORIES.map((c, i) => ({ id: i + 1, name: c[0], default_hsn: c[1], default_gst: c[2], sort: i + 1, active: 1, created_at: now })),
+    );
+    return DEFAULT_CATEGORIES.length;
+}
+
+/**
+ * End every login. Both halves are needed: the Sessions rows, and the cached copies of them —
+ * a cached login keeps working for hours after its row is gone.
+ * Touches nothing else, so it is safe to run in the middle of a working day.
+ */
+function logoutEveryone_() {
+    const cache = CacheService.getScriptCache();
+    const t = readTable_("Sessions");
+    const tokens = t.rows.map((s) => "s_" + s.token);
+    for (let i = 0; i < tokens.length; i += 100) cache.removeAll(tokens.slice(i, i + 100));
+    const last = t.sh.getLastRow();
+    if (last >= 2) t.sh.getRange(2, 1, last - 1, t.keys.length).clearContent();
+    delete REQ_CACHE_["Sessions"];
+    return tokens.length;
+}
+
+function logoutEveryone() {
+    const ui = SpreadsheetApp.getUi();
+    const r = ui.alert(
+        "Log everyone out",
+        "Everyone signs in again on their next tap — anyone in the middle of a bill will have to log in first.\n\n" +
+            "Nothing else changes: no bills, stock, products or settings are touched.\n\n" +
+            "The app itself updates on its own the next time it is opened; this just makes sure that happens.\n\nContinue?",
+        ui.ButtonSet.YES_NO,
+    );
+    if (r !== ui.Button.YES) {
+        alert_("Nothing was changed.");
+        return;
+    }
+    const n = withLock_(() => logoutEveryone_());
+    alert_(n ? n + (n === 1 ? " login ended." : " logins ended.") + "\n\nAsk everyone to open the app and log in again." : "Nobody was logged in.");
+}
+
 function resetTestData_() {
     return withLock_(() => {
-        // log everyone out: cached logins would otherwise keep working for hours
-        const cache = CacheService.getScriptCache();
-        const tokens = rows_("Sessions").map((s) => "s_" + s.token);
-        for (let i = 0; i < tokens.length; i += 100) cache.removeAll(tokens.slice(i, i + 100));
+        const ended = logoutEveryone_();
 
         const cleared = {};
         RESET_TABS_.forEach((name) => {
@@ -65,6 +112,7 @@ function resetTestData_() {
             if (last >= 2) t.sh.getRange(2, 1, last - 1, t.keys.length).clearContent(); // owner's extra columns untouched
             delete REQ_CACHE_[name];
         });
+        cleared.Sessions = ended; // the tab was already emptied by the logout above
 
         const variants = rows_("Variants").filter((v) => v.stock_qty);
         variants.forEach((v) => (v.stock_qty = 0));
@@ -81,6 +129,54 @@ function resetTestData_() {
         log_({ user: { id: 0, name: "Sheet owner" } }, "RESET", "All", "", "Test data cleared (setup kept)");
         return { cleared, counters: counters.length, stock_reset: variants.length };
     });
+}
+
+/* ---------- reset everything, catalogue included (starting the shop from nothing) ---------- */
+
+function resetAll() {
+    const ui = SpreadsheetApp.getUi();
+    const r = ui.prompt(
+        "Reset EVERYTHING",
+        "This does everything “Reset test data” does, and also permanently deletes every product, size, " +
+            "brand and category — prices, SKUs and barcodes included.\n\n" +
+            "Kept: staff and their passwords, branches, and shop settings. The standard categories come back empty.\n\n" +
+            "Make a backup first (File → Make a copy). Type ERASE ALL to continue:",
+        ui.ButtonSet.OK_CANCEL,
+    );
+    if (r.getSelectedButton() !== ui.Button.OK || r.getResponseText().trim().toUpperCase() !== "ERASE ALL") {
+        alert_("Nothing was changed.");
+        return;
+    }
+    const res = resetAll_();
+    const lines = Object.keys(res.cleared)
+        .filter((t) => res.cleared[t])
+        .map((t) => "  " + t + ": " + res.cleared[t]);
+    alert_(
+        "Everything cleared.\n\n" + (lines.length ? "Rows removed:\n" + lines.join("\n") + "\n\n" : "") +
+            "The catalogue is empty — add products, or import them from a CSV.\n" +
+            "Bill numbers restart at 00001. Everyone has been logged out; log in again on each phone.",
+    );
+}
+
+function resetAll_() {
+    // the two halves lock separately: resetTestData_ takes the script lock and releases it, and
+    // asking for it again while still inside it would deadlock
+    const res = resetTestData_();
+    const catalogue = withLock_(() => {
+        CATALOG_TABS_.forEach((name) => {
+            const t = readTable_(name);
+            res.cleared[name] = t.rows.length;
+            const last = t.sh.getLastRow();
+            if (last >= 2) t.sh.getRange(2, 1, last - 1, t.keys.length).clearContent(); // owner's extra columns untouched
+            delete REQ_CACHE_[name];
+        });
+        // never leave the app with nowhere to file a product
+        const cats = seedDefaultCategories_();
+        bumpCatalogVersion_(); // the bump inside resetTestData_ happened before the catalogue went
+        log_({ user: { id: 0, name: "Sheet owner" } }, "RESET", "All", "", "Everything cleared (staff, branches, settings kept)");
+        return cats;
+    });
+    return Object.assign(res, { categories_restored: catalogue });
 }
 
 function alert_(msg) {
@@ -149,12 +245,7 @@ function setupSheets() {
         .map((k) => ({ key: k, value: DEFAULT_SETTINGS[k], updated_by: 0, updated_at: now }));
     appendRows_("Settings", missing);
 
-    if (!rows_("Categories").length) {
-        appendRows_(
-            "Categories",
-            DEFAULT_CATEGORIES.map((c, i) => ({ id: i + 1, name: c[0], default_hsn: c[1], default_gst: c[2], sort: i + 1, active: 1, created_at: now })),
-        );
-    }
+    seedDefaultCategories_();
 
     // branches: the existing shop becomes branch 1 (blank code keeps the GF/26-27/00001 bill series)
     if (!rows_("Branches").length) {
