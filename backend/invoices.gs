@@ -129,39 +129,6 @@ function pdfDate_(s) {
     return out;
 }
 
-const PDF_ONES_ = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve",
-    "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
-const PDF_TENS_ = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
-
-function words99_(n) {
-    if (n < 20) return PDF_ONES_[n];
-    return (PDF_TENS_[Math.floor(n / 10)] + (n % 10 ? " " + PDF_ONES_[n % 10] : "")).trim();
-}
-
-// Indian numbering: crore / lakh / thousand — "One Thousand Fifty Rupees only"
-function inrWords_(amount) {
-    const total = r2_(Math.abs(Number(amount) || 0));
-    let n = Math.floor(total);
-    const paise = Math.round((total - n) * 100);
-    if (!n && !paise) return "Zero Rupees only";
-    const parts = [];
-    const chunk = (div, label) => {
-        const v = Math.floor(n / div);
-        if (v) {
-            parts.push(words99_(v) + " " + label);
-            n -= v * div;
-        }
-    };
-    chunk(10000000, "Crore");
-    chunk(100000, "Lakh");
-    chunk(1000, "Thousand");
-    chunk(100, "Hundred");
-    if (n) parts.push(words99_(n));
-    let out = parts.join(" ") + " Rupees";
-    if (paise) out += " and " + words99_(paise) + " Paise";
-    return (Number(amount) < 0 ? "Minus " : "") + out + " only";
-}
-
 function pdfShop_(branchId) {
     const s = settingsMap_();
     const b = branchById_(bid_(branchId));
@@ -179,31 +146,32 @@ function pdfPage_(shop, title, stamp, body, notes) {
     const e = escHtml_;
     return (
         '<html><head><meta charset="utf-8"><style>' +
-        "body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#2b2520;margin:0}" +
+        // one sans face for the whole document — a serif heading over a sans table looked like two papers
+        "body{font-family:Helvetica,Arial,sans-serif;font-size:11px;color:#2b2520;margin:0}" +
         "table{border-collapse:collapse;width:100%}td,th{vertical-align:top}" +
-        ".muted{color:#8a7f75}.small{font-size:9.5px}.b{font-weight:bold}.n{text-align:right;white-space:nowrap}" +
+        ".muted{color:#8a7f75}.small{font-size:10px}.b{font-weight:bold}.n{text-align:right;white-space:nowrap}" +
         ".lbl{font-size:8.5px;letter-spacing:.6px;text-transform:uppercase;color:#8a7f75}" +
-        ".items th{background:#654321;color:#ffffff;padding:7px 6px;font-size:9.5px;letter-spacing:.3px;text-align:left}" +
+        ".items th{background:#654321;color:#ffffff;padding:7px 6px;font-size:10px;font-weight:bold;letter-spacing:.3px;text-align:left}" +
         ".items td{padding:7px 6px;border-bottom:1px solid #eee5da}" +
         ".items tbody tr{page-break-inside:avoid}.items td.mid{vertical-align:middle}" +
         ".box{border:1px solid #e7ded2;background:#faf7f2}" +
-        ".gst td,.gst th{border:1px solid #e7ded2;padding:4px 6px;font-size:9.5px;text-align:right}" +
+        ".gst td,.gst th{border:1px solid #e7ded2;padding:4px 6px;font-size:10px;text-align:right}" +
         ".gst th{background:#f3ece2;font-size:8.5px;letter-spacing:.4px;text-transform:uppercase;color:#6b6157}" +
         ".tot td{padding:5px 8px;border-bottom:1px solid #eee5da}.tot td.v{text-align:right;white-space:nowrap}" +
-        ".grand td{background:#f5bf03;color:#2b2520;font-size:13.5px;font-weight:bold;border:0;padding:8px}" +
+        ".grand td{background:#f5bf03;color:#2b2520;font-size:13px;font-weight:bold;border:0;padding:8px}" +
         "</style></head><body>" +
         // letterhead
         '<table><tr>' +
         '<td style="width:52px;padding-right:10px"><img src="' + PDF_LOGO_ + '" width="52" height="52" alt=""></td>' +
         "<td>" +
-        '<div style="font-family:Georgia,serif;font-size:19px;font-weight:bold;color:#654321">' + e(shop.name) + (shop.branch ? " · " + e(shop.branch) : "") + "</div>" +
+        '<div style="font-size:20px;font-weight:bold;color:#654321">' + e(shop.name) + (shop.branch ? " · " + e(shop.branch) : "") + "</div>" +
         (shop.tagline ? '<div style="font-style:italic;color:#8a7f75">' + e(shop.tagline) + "</div>" : "") +
         '<div class="small" style="margin-top:3px">' + e(shop.address || "") + "</div>" +
         '<div class="small">' + e([shop.phone, shop.email].filter(Boolean).join(" · ")) + "</div>" +
         (shop.gstin ? '<div class="small b">GSTIN: ' + e(shop.gstin) + " · State: " + e(shop.state_name || "") + " (" + e(shop.state_code || "") + ")</div>" : "") +
         "</td>" +
         '<td style="width:150px;text-align:right">' +
-        '<div style="background:#654321;color:#fff;font-family:Georgia,serif;font-size:13px;letter-spacing:2px;padding:7px 10px">' + e(title) + "</div>" +
+        '<div style="background:#654321;color:#fff;font-size:12px;font-weight:bold;letter-spacing:2px;padding:7px 10px">' + e(title) + "</div>" +
         (stamp ? '<div style="color:#c62828;font-weight:bold;font-size:14px;margin-top:6px">' + e(stamp) + "</div>" : "") +
         "</td></tr></table>" +
         '<div style="border-bottom:3px solid #f5bf03;margin:10px 0 12px"></div>' +
@@ -283,9 +251,7 @@ function invoicePdfHtml_(d) {
         (balance > 0 ? line("<b>Balance due</b>", "<b>" + inrText_(balance) + "</b>") : balance < 0 ? line("Change given", inrText_(-balance)) : "") +
         (d.returns || []).map((r) => line("Credit note " + e(r.credit_note_no), "-" + inrText_(r.total))).join("") +
         "</table>" +
-        (saved > 0 ? '<div style="margin-top:6px;text-align:right;color:#2e7d32;font-weight:bold">You saved ' + inrText_(saved) + "</div>" : "");
-
-    const words = '<div class="box" style="margin-top:12px;padding:7px 9px"><span class="lbl">Invoice amount in words</span><br><b>' + e(inrWords_(sale.grand_total)) + "</b></div>";
+        (saved > 0 ? '<div style="margin-top:6px;text-align:right;color:#2e7d32;font-weight:bold">You saved ' + inrText_(saved) + " on MRP!</div>" : "");
 
     const body =
         pdfMeta_([
@@ -295,7 +261,7 @@ function invoicePdfHtml_(d) {
             ["Served By", e(sale.salesman_name)],
         ]) +
         '<table class="items" style="margin-top:12px"><thead>' + head + "</thead><tbody>" + rows + "</tbody></table>" +
-        '<table style="margin-top:14px"><tr><td style="padding-right:16px">' + gstTable + words + '</td><td style="width:265px">' + totals + "</td></tr></table>";
+        '<table style="margin-top:14px"><tr><td style="padding-right:16px">' + gstTable + '</td><td style="width:265px">' + totals + "</td></tr></table>";
     return pdfPage_(shop, showGst && shop.gstin ? "TAX INVOICE" : "INVOICE", sale.status === "voided" ? "VOIDED" : "", body, "");
 }
 
@@ -318,7 +284,6 @@ function creditNoteHtml_(r) {
         '<table class="tot">' + line("Taxable value", inrText_(r.taxable)) + line("GST", inrText_(r.tax)) +
         '</table><table class="tot" style="margin-top:2px"><tr class="grand"><td>Refund</td><td class="v">' + inrText_(r.total) + "</td></tr></table>" +
         '<table class="tot">' + line("Refunded by", e(METHOD_NAME_[r.refund_method] || r.refund_method || "")) + "</table>";
-    const words = '<div class="box" style="margin-top:12px;padding:7px 9px"><span class="lbl">Refund amount in words</span><br><b>' + e(inrWords_(r.total)) + "</b></div>";
     const body =
         pdfMeta_([
             ["Credit Note No", "<b>" + e(r.credit_note_no) + "</b>"],
@@ -328,7 +293,7 @@ function creditNoteHtml_(r) {
         ]) +
         '<table class="items" style="margin-top:12px"><thead><tr><th style="width:22px">#</th><th>Item returned</th><th class="n" style="width:46px">Qty</th>' +
         '<th class="n" style="width:66px">Taxable</th><th class="n" style="width:58px">GST</th><th class="n" style="width:74px">Amount</th></tr></thead><tbody>' + rows2 + "</tbody></table>" +
-        '<table style="margin-top:14px"><tr><td style="padding-right:16px">' + (r.reason ? '<div class="lbl">Reason</div>' + e(r.reason) : "") + words +
+        '<table style="margin-top:14px"><tr><td style="padding-right:16px">' + (r.reason ? '<div class="lbl">Reason</div>' + e(r.reason) : "") +
         '</td><td style="width:265px">' + totals + "</td></tr></table>";
     return pdfPage_(pdfShop_(r.branch_id), "CREDIT NOTE", "", body, "");
 }

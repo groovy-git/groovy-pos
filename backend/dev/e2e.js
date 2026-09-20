@@ -581,6 +581,9 @@ check("credit note filed with its bill", cnFile && pathOf(cnFile).endsWith("/GST
 ok(call("saveSettings", { settings: { gstin: "" } }, T), "clear GSTIN again");
 check("pdf_url stored on the bill", !!pdf1.pdf_url && ok(call("getSale", { id: pdfSale.id }, T, 1), "bill detail").sale.pdf_url === pdf1.pdf_url);
 check("PDF html escapes customer name", pdfFile && pdfFile.html.includes("&lt;b&gt;Evil&lt;/b&gt; &amp; Co") && !pdfFile.html.includes("<b>Evil"));
+// the savings line is worded like the receipt, and the whole page uses one sans face
+check("savings line says 'You saved ₹X on MRP!'", pdfFile && /You saved [^<]+ on MRP!/.test(pdfFile.html), pdfFile && (/You saved[^<]*/.exec(pdfFile.html) || [])[0]);
+check("no mixed serif font in the PDF", pdfFiles().every((f) => !/Georgia/.test(f.html) && !/[^-]serif/.test(f.html)));
 const pdfCount = pdfFiles().length;
 const pdf2 = ok(call("saveInvoicePdf", { id: pdfSale.id }, T, 1), "save PDF again");
 check("second press: already saved, no duplicate file", pdf2.already === true && pdfFiles().length === pdfCount);

@@ -73,13 +73,6 @@ function runTests() {
     eq("phone valid", validPhone_("9876543210"), true);
     eq("phone invalid", validPhone_("12345"), false);
 
-    // amount in words on the invoice (Indian lakh / crore)
-    eq("words simple", inrWords_(1050), "One Thousand Fifty Rupees only");
-    eq("words paise", inrWords_(983.25), "Nine Hundred Eighty Three Rupees and Twenty Five Paise only");
-    eq("words lakh", inrWords_(125000), "One Lakh Twenty Five Thousand Rupees only");
-    eq("words crore", inrWords_(10000000), "One Crore Rupees only");
-    eq("words zero", inrWords_(0), "Zero Rupees only");
-
     // IST day boundary
     eq("IST date", fmtDate_(new Date("2026-09-17T19:00:00Z")), "2026-09-18"); // 00:30 IST next day
 

@@ -60,6 +60,15 @@ export function fmtDate(s) {
   return `${day} ${MONTHS[month - 1]} ${year}`;
 }
 
+// like fmtDateTime but with the year — an invoice must carry it
+export function fmtDateTimeFull(s) {
+  const d = parseIst(s);
+  if (!d) return "";
+  const { day, month, year } = istParts(d);
+  const time = d.toLocaleTimeString("en-IN", { timeZone: TZ, hour: "numeric", minute: "2-digit" });
+  return `${day} ${MONTHS[month - 1]} ${year}, ${time}`;
+}
+
 export function fmtTime(s) {
   const d = parseIst(s);
   return d ? d.toLocaleTimeString("en-IN", { timeZone: TZ, hour: "numeric", minute: "2-digit" }) : "";

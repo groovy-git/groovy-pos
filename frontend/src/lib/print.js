@@ -1,4 +1,4 @@
-import { inr, fmtDateTime, qtyLabel, METHOD_LABEL, r2 } from "./format";
+import { inr, fmtDateTime, fmtDateTimeFull, qtyLabel, METHOD_LABEL, r2 } from "./format";
 
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -103,77 +103,123 @@ export function receiptHtml(d, s) {
   </body></html>`;
 }
 
-/* ---------- A4 tax invoice ---------- */
+/* ---------- A4 tax invoice ----------
+   Deliberately the same document as the PDF filed to Drive (backend/invoices.gs → pdfPage_ /
+   invoicePdfHtml_): same letterhead, same strip, same table, same totals block. Keep the two in
+   step when either changes. */
+
+// the app logo, inline so a printed bill never waits for (or misses) a download
+const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="52" height="52">
+  <circle cx="256" cy="256" r="256" fill="#F5BF03"/>
+  <text x="252" y="268" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="700" font-size="90" fill="#141414">GROOVY</text>
+  <line x1="150" y1="296" x2="354" y2="296" stroke="#141414" stroke-width="3"/>
+  <text x="252" y="342" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="38" fill="#141414">Fragrances</text>
+</svg>`;
+
+// shared page frame: letterhead, title band, body, notes + signature
+function a4Page(s, title, stamp, body) {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>
+    @page { size: A4; margin: 14mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Helvetica, Arial, sans-serif; font-size: 11px; color: #2b2520; }
+    table { border-collapse: collapse; width: 100%; } td, th { vertical-align: top; }
+    .muted { color: #8a7f75; } .small { font-size: 10px; } .b { font-weight: bold; }
+    .n { text-align: right; white-space: nowrap; }
+    .lbl { font-size: 8.5px; letter-spacing: .6px; text-transform: uppercase; color: #8a7f75; }
+    .items th { background: #654321; color: #fff; padding: 7px 6px; font-size: 10px; font-weight: bold; letter-spacing: .3px; text-align: left; }
+    .items td { padding: 7px 6px; border-bottom: 1px solid #eee5da; }
+    .items tbody tr { page-break-inside: avoid; } .items td.mid { vertical-align: middle; }
+    .box { border: 1px solid #e7ded2; background: #faf7f2; }
+    .gst td, .gst th { border: 1px solid #e7ded2; padding: 4px 6px; font-size: 10px; text-align: right; }
+    .gst th { background: #f3ece2; font-size: 8.5px; letter-spacing: .4px; text-transform: uppercase; color: #6b6157; }
+    .tot td { padding: 5px 8px; border-bottom: 1px solid #eee5da; } .tot td.v { text-align: right; white-space: nowrap; }
+    .grand td { background: #f5bf03; color: #2b2520; font-size: 13px; font-weight: bold; border: 0; padding: 8px; }
+  </style></head><body>
+    <table><tr>
+      <td style="width:52px;padding-right:10px">${LOGO_SVG}</td>
+      <td>
+        <div style="font-size:20px;font-weight:bold;color:#654321">${esc(s.business_name)}${s.branch_name ? " · " + esc(s.branch_name) : ""}</div>
+        ${s.tagline ? `<div style="font-style:italic;color:#8a7f75">${esc(s.tagline)}</div>` : ""}
+        <div class="small" style="margin-top:3px">${esc(s.address || "")}</div>
+        <div class="small">${esc([s.phone, s.email].filter(Boolean).join(" · "))}</div>
+        ${s.gstin ? `<div class="small b">GSTIN: ${esc(s.gstin)} · State: ${esc(s.state_name || "")} (${esc(s.state_code || "")})</div>` : ""}
+      </td>
+      <td style="width:150px;text-align:right">
+        <div style="background:#654321;color:#fff;font-size:12px;font-weight:bold;letter-spacing:2px;padding:7px 10px">${esc(title)}</div>
+        ${stamp ? `<div style="color:#c62828;font-weight:bold;font-size:14px;margin-top:6px">${esc(stamp)}</div>` : ""}
+      </td>
+    </tr></table>
+    <div style="border-bottom:3px solid #f5bf03;margin:10px 0 12px"></div>
+    ${body}
+    <table style="margin-top:18px"><tr>
+      <td class="small muted">${esc(s.receipt_footer || "")}<br>This is a computer generated document.</td>
+      <td style="width:210px;text-align:center;padding-left:16px">
+        <div class="small" style="margin-bottom:34px">For ${esc(s.business_name)}</div>
+        <div style="border-top:1px solid #8a7f75;padding-top:4px" class="small muted">Authorised Signatory</div>
+      </td>
+    </tr></table>
+  </body></html>`;
+}
+
+// four label/value cells in a bordered strip
+const a4Meta = (cells) =>
+  `<table class="box"><tr>${cells
+    .map((c) => `<td style="width:25%;padding:7px 9px;border-right:1px solid #e7ded2"><div class="lbl">${esc(c[0])}</div>${c[1]}</td>`)
+    .join("")}</tr></table>`;
+
 export function a4InvoiceHtml(d, s) {
   s = shopFor(d, s);
   const sale = d.sale;
   const showGst = !sale.gst_hidden; // GST breakup can be left off the customer's bill
   const rates = gstByRate(d.items);
+  const money = (v, i) => inr(v, { paise: i && i.unit === "ml" });
   const rows = d.items
-    .map(
-      (i, n) => `<tr><td>${n + 1}</td><td><b>${esc(itemName(i))}</b>${i.brand ? `<div class="sub">${esc(i.brand)}</div>` : ""}</td>
-      ${showGst ? `<td>${esc(i.hsn || "")}</td>` : ""}<td class="n">${qtyLabel(i.qty, i.unit)}</td><td class="n">${inr(i.mrp, { paise: i.unit === "ml" })}</td>
-      <td class="n">${inr(i.price, { paise: i.unit === "ml" })}</td><td class="n">${inr(r2(i.discount + (i.bill_disc_share || 0)))}</td>
-      ${showGst ? `<td class="n">${i.gst_rate}%</td><td class="n">${i.taxable.toFixed(2)}</td>` : ""}<td class="n"><b>${inr(i.line_total)}</b></td></tr>`,
-    )
+    .map((i, n) => {
+      const disc = r2(i.discount + (i.bill_disc_share || 0));
+      return `<tr${n % 2 ? ' style="background:#faf7f2"' : ""}><td class="muted">${n + 1}</td>
+      <td><b>${esc(itemName(i))}</b>${i.brand ? `<div class="small muted">${esc(i.brand)}</div>` : ""}</td>
+      ${showGst ? `<td class="small mid">${esc(i.hsn || "")}</td>` : ""}
+      <td class="n mid">${qtyLabel(i.qty, i.unit)}</td><td class="n mid muted">${money(i.mrp, i)}</td><td class="n mid">${money(i.price, i)}</td>
+      <td class="n mid">${disc > 0 ? "-" + inr(disc) : "—"}</td>
+      ${showGst ? `<td class="n mid">${i.gst_rate}%</td><td class="n mid">${i.taxable.toFixed(2)}</td>` : ""}
+      <td class="n mid b">${inr(i.line_total)}</td></tr>`;
+    })
     .join("");
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(sale.invoice_no)}</title><style>
-    @page { size: A4; margin: 14mm; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 11.5px; color: #1a1a1a; }
-    .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 4px solid #F5BF03; padding-bottom: 12px; margin-bottom: 14px; }
-    .brand { display: flex; gap: 12px; align-items: center; }
-    .dot { width: 58px; height: 58px; border-radius: 50%; background: #F5BF03; display: grid; place-items: center; font-family: Georgia, serif; font-weight: 700; font-size: 11px; letter-spacing: .5px; }
-    h1 { font-family: Georgia, serif; font-size: 24px; color: #654321; }
-    .tag { font-style: italic; color: #654321; }
-    .doc { text-align: right; } .doc h2 { font-family: Georgia, serif; font-size: 22px; letter-spacing: 3px; color: #654321; }
-    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #FAF7F2; border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; }
-    .lbl { font-size: 10px; text-transform: uppercase; color: #7a716a; letter-spacing: .5px; }
-    table { width: 100%; border-collapse: collapse; }
-    .items th { background: #654321; color: #fff; padding: 7px 6px; font-size: 10.5px; text-align: left; }
-    .items td { padding: 7px 6px; border-bottom: 1px solid #ebe3d9; vertical-align: top; }
-    .n { text-align: right; white-space: nowrap; } .items th.n { text-align: right; }
-    .sub { font-size: 10px; color: #7a716a; }
-    .bottom { display: flex; justify-content: space-between; gap: 20px; margin-top: 14px; }
-    .gst td, .gst th { border: 1px solid #ebe3d9; padding: 4px 6px; font-size: 10.5px; text-align: right; } .gst th { background: #FAF7F2; }
-    .tot { width: 280px; } .tot td { padding: 4px 6px; } .tot td:last-child { text-align: right; }
-    .grand td { font-size: 15px; font-weight: 700; color: #654321; border-top: 2px solid #654321; border-bottom: 2px solid #654321; }
-    .foot { margin-top: 26px; display: flex; justify-content: space-between; align-items: flex-end; color: #555; }
-    .sign { text-align: center; border-top: 1px solid #999; padding-top: 4px; width: 200px; }
-    .void { color: #c62828; font-weight: 700; font-size: 16px; }
-  </style></head><body>
-    <div class="head">
-      <div class="brand"><div class="dot">GROOVY</div><div><h1>${esc(s.business_name)}${s.branch_name ? " · " + esc(s.branch_name) : ""}</h1>${s.tagline ? `<div class="tag">${esc(s.tagline)}</div>` : ""}
-        <div>${esc(s.address || "")}</div><div>${esc([s.phone, s.email].filter(Boolean).join(" · "))}</div>
-        ${s.gstin ? `<div><b>GSTIN: ${esc(s.gstin)}</b> · State: ${esc(s.state_name || "")} (${esc(s.state_code || "")})</div>` : ""}</div></div>
-      <div class="doc"><h2>${showGst && s.gstin ? "TAX INVOICE" : "INVOICE"}</h2>${sale.status === "voided" ? '<div class="void">VOIDED</div>' : ""}</div>
-    </div>
-    <div class="meta">
-      <div><div class="lbl">Invoice No</div><b>${esc(sale.invoice_no)}</b></div>
-      <div><div class="lbl">Date</div>${esc(fmtDateTime(sale.date))}</div>
-      <div><div class="lbl">Bill To</div>${esc(sale.customer_name || "Walk-in customer")} ${esc(sale.customer_phone || "")}${sale.customer_gstin ? `<br>GSTIN: ${esc(sale.customer_gstin)}` : ""}</div>
-      <div><div class="lbl">Served By</div>${esc(sale.salesman_name)}</div>
-    </div>
-    <table class="items"><thead><tr><th>#</th><th>Item</th>${showGst ? "<th>HSN</th>" : ""}<th class="n">Qty</th><th class="n">MRP</th><th class="n">Rate</th><th class="n">Disc</th>${showGst ? '<th class="n">GST</th><th class="n">Taxable</th>' : ""}<th class="n">Amount</th></tr></thead>
-      <tbody>${rows}</tbody></table>
-    <div class="bottom">
-      ${showGst ? `<div><div class="lbl" style="margin-bottom:4px">GST Summary (prices include GST)</div>
-        <table class="gst"><tr><th>Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>Total tax</th></tr>
-        ${rates.map((r) => `<tr><td>${r.rate}%</td><td>${r.taxable.toFixed(2)}</td><td>${(r.tax / 2).toFixed(2)}</td><td>${(r.tax - r2(r.tax / 2)).toFixed(2)}</td><td>${r.tax.toFixed(2)}</td></tr>`).join("")}</table></div>` : "<div></div>"}
-      <table class="tot">
-        <tr><td>Items total</td><td>${inr(sale.gross)}</td></tr>
-        ${sale.item_disc + sale.bill_disc > 0 ? `<tr><td>Discount</td><td>-${inr(r2(sale.item_disc + sale.bill_disc))}</td></tr>` : ""}
-        ${showGst ? `<tr><td>Taxable value</td><td>${inr(sale.taxable, { paise: true })}</td></tr>
-        <tr><td>CGST</td><td>${inr(sale.cgst, { paise: true })}</td></tr>
-        <tr><td>SGST</td><td>${inr(sale.sgst, { paise: true })}</td></tr>` : ""}
-        ${sale.round_off ? `<tr><td>Round off</td><td>${inr(sale.round_off, { paise: true })}</td></tr>` : ""}
-        <tr class="grand"><td>Grand Total</td><td>${inr(sale.grand_total)}</td></tr>
-        ${payLines(d).map((p) => `<tr><td>Paid · ${METHOD_LABEL[p.method] || p.method}</td><td>${inr(p.amount)}</td></tr>`).join("")}
-        ${(d.returns || []).map((r) => `<tr><td>Credit note ${esc(r.credit_note_no)}</td><td>-${inr(r.total)}</td></tr>`).join("")}
-      </table>
-    </div>
-    <div class="foot"><div>${esc(s.receipt_footer || "")}<br>This is a computer generated invoice.</div><div class="sign">For ${esc(s.business_name)}</div></div>
-  </body></html>`;
+  const head = `<tr><th style="width:22px">#</th><th>Item</th>${showGst ? '<th style="width:52px">HSN</th>' : ""}
+    <th class="n" style="width:38px">Qty</th><th class="n" style="width:54px">MRP</th><th class="n" style="width:54px">Rate</th>
+    <th class="n" style="width:50px">Disc</th>${showGst ? '<th class="n" style="width:38px">GST</th><th class="n" style="width:62px">Taxable</th>' : ""}
+    <th class="n" style="width:70px">Amount</th></tr>`;
+  const gstTable = showGst
+    ? `<div class="lbl" style="margin-bottom:4px">GST summary (prices include GST)</div>
+       <table class="gst" style="width:auto"><tr><th>Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>Total tax</th></tr>
+       ${rates.map((r) => `<tr><td>${r.rate}%</td><td>${r.taxable.toFixed(2)}</td><td>${(r.tax / 2).toFixed(2)}</td><td>${(r.tax - r2(r.tax / 2)).toFixed(2)}</td><td>${r.tax.toFixed(2)}</td></tr>`).join("")}</table>`
+    : "";
+  const line = (l, v, cls) => `<tr class="${cls || ""}"><td>${l}</td><td class="v">${v}</td></tr>`;
+  const disc = r2(sale.item_disc + sale.bill_disc);
+  const pays = payLines(d);
+  const paid = r2(pays.reduce((a, p) => a + p.amount, 0));
+  const balance = r2(sale.grand_total - paid);
+  const saved = savings(d);
+  const totals = `<table class="tot">${line("Items total", inr(sale.gross))}
+      ${disc > 0 ? line("Discount", "-" + inr(disc)) : ""}
+      ${showGst ? line("Taxable value", inr(sale.taxable, { paise: true })) + line("CGST", inr(sale.cgst, { paise: true })) + line("SGST", inr(sale.sgst, { paise: true })) : ""}
+      ${sale.round_off ? line("Round off", inr(sale.round_off, { paise: true })) : ""}</table>
+    <table class="tot" style="margin-top:2px"><tr class="grand"><td>Grand Total</td><td class="v">${inr(sale.grand_total)}</td></tr></table>
+    <table class="tot">
+      ${pays.map((p) => line("Paid · " + (METHOD_LABEL[p.method] || esc(p.method)), inr(p.amount))).join("")}
+      ${balance > 0 ? line("<b>Balance due</b>", "<b>" + inr(balance) + "</b>") : balance < 0 ? line("Change given", inr(-balance)) : ""}
+      ${(d.returns || []).map((r) => line("Credit note " + esc(r.credit_note_no), "-" + inr(r.total))).join("")}
+    </table>
+    ${saved > 0 ? `<div style="margin-top:6px;text-align:right;color:#2e7d32;font-weight:bold">You saved ${inr(saved)} on MRP!</div>` : ""}`;
+  const body = `${a4Meta([
+    ["Invoice No", `<b>${esc(sale.invoice_no)}</b>`],
+    ["Date", `<span style="white-space:nowrap">${esc(fmtDateTimeFull(sale.date))}</span>`],
+    ["Bill To", esc(sale.customer_name || "Walk-in customer") + (sale.customer_phone ? "<br>" + esc(sale.customer_phone) : "") + (sale.customer_gstin ? "<br>GSTIN: " + esc(sale.customer_gstin) : "")],
+    ["Served By", esc(sale.salesman_name)],
+  ])}
+    <table class="items" style="margin-top:12px"><thead>${head}</thead><tbody>${rows}</tbody></table>
+    <table style="margin-top:14px"><tr><td style="padding-right:16px">${gstTable}</td><td style="width:265px">${totals}</td></tr></table>`;
+  return a4Page(s, showGst && s.gstin ? "TAX INVOICE" : "INVOICE", sale.status === "voided" ? "VOIDED" : "", body);
 }
 
 export function printHtml(html) {
@@ -214,7 +260,7 @@ export function billText(d, s) {
     disc > 0 ? `Discount: -${inr(disc)}` : "",
     `*Total: ${inr(sale.grand_total)}*${showGst ? " (incl. GST)" : ""}`,
     pays ? `Paid: ${pays}` : "",
-    saved > 0 ? `You saved ${inr(saved)} on MRP 🎉` : "",
+    saved > 0 ? `You saved ${inr(saved)} on MRP! 🎉` : "",
     "",
     s.receipt_footer || "Thank you for shopping with us!",
     "groovyfragrances.in",
