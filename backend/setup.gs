@@ -247,6 +247,13 @@ function setupSheets() {
 
     seedDefaultCategories_();
 
+    // invoice folders used to be remembered by Drive id; they are found by name now, so these
+    // leftovers would only mislead whoever reads Project Settings next
+    const sp = PropertiesService.getScriptProperties();
+    Object.keys(sp.getProperties())
+        .filter((k) => k === "pdf_root_id" || k.indexOf("pdf_dir_") === 0)
+        .forEach((k) => sp.deleteProperty(k));
+
     // branches: the existing shop becomes branch 1 (blank code keeps the GF/26-27/00001 bill series)
     if (!rows_("Branches").length) {
         const s = settingsMap_();

@@ -693,6 +693,63 @@ const oldUrl = oldPdf.getUrl();
 ctx.savePendingInvoicePdfs();
 check("old month folder: PDF moved to FY 2026-27/08, same id and link", pathOf(oldPdf) === "My Drive/Groovy POS/Sales_Invoices/FY 2026-27/08" && oldPdf.getUrl() === oldUrl, pathOf(oldPdf));
 check("old month folder binned", oldDir.trashed === true);
+
+// Folders are found by name, never remembered by id: a Drive folder keeps its id through a rename and
+// a move, so remembering ids made the app follow a folder someone had filed elsewhere.
+const dirNamed = (parent, name) => { const it = parent.getFoldersByName(name); return it.hasNext() ? it.next() : null; };
+// each save is its own Apps Script execution in production, so the per-run folder memo starts empty
+const newRun = () => require("vm").runInContext("PDF_DIRS_ = {}", ctx);
+const saveBill = (ref, gstHidden) => {
+    const s = ok(call("completeSale", { client_ref: ref, gst_hidden: !!gstHidden, lines: [{ variant_id: vBottle.id, qty: 1 }], payments: [{ method: "cash", amount: 50 }] }, T, 1), "bill " + ref).sale;
+    newRun();
+    ok(call("saveInvoicePdf", { id: s.id }, T, 1), "save PDF " + ref);
+    return pdfFiles().find((f) => f.name.startsWith(s.invoice_no.replace(/[/]/g, "-")));
+};
+ok(call("saveSettings", { settings: { gstin: "27ABCDE1234F1Z5" } }, T), "GSTIN on for folder tests");
+const TODAY = require("vm").runInContext("todayStr_()", ctx);
+const fyName = fyDir(TODAY);
+newRun();
+const rootF = require("vm").runInContext("invoiceRoot_()", ctx);
+// the reported case: rename the FY folder and move it to the top of the drive
+const fyF = dirNamed(rootF, fyName);
+check("the FY folder is there to begin with", !!fyF, fyName);
+fyF.setName("FY 2026-27 OLD");
+fyF.moveTo(env.drive.root);
+const afterRename = saveBill("dir-1");
+check("renamed and moved FY folder: a fresh one is built by name",
+    pathOf(afterRename) === monthDir(TODAY) + "/GST", pathOf(afterRename));
+check("the moved folder is left alone", fyF.name === "FY 2026-27 OLD" && pathOf({ parent: fyF }) === "My Drive/FY 2026-27 OLD", pathOf({ parent: fyF }));
+// moving Sales_Invoices itself is rebuilt the same way
+newRun();
+const rootBefore = require("vm").runInContext("invoiceRoot_()", ctx);
+rootBefore.moveTo(env.drive.root);
+rootBefore.setName("Sales_Invoices ARCHIVE");
+const afterRootMove = saveBill("dir-2");
+check("moved Sales_Invoices: a new one appears beside the Sheet",
+    pathOf(afterRootMove) === monthDir(TODAY) + "/GST", pathOf(afterRootMove));
+// the two kinds are each created on their first bill of that kind
+newRun();
+const freshRoot = require("vm").runInContext("invoiceRoot_()", ctx);
+const freshMonth = dirNamed(dirNamed(freshRoot, fyName), TODAY.slice(5, 7));
+check("Non-GST is not created before it is needed", !dirNamed(freshMonth, "Non-GST"));
+const firstNonGst = saveBill("dir-3", true);
+check("first non-GST bill creates Non-GST", pathOf(firstNonGst) === monthDir(TODAY) + "/Non-GST", pathOf(firstNonGst));
+// a bill in another month gets its own month folder under the same FY
+newRun();
+const janFolder = require("vm").runInContext('invoiceFolder_("2027-01-09", true)', ctx);
+check("a new month gets its own folder", pathOf({ parent: janFolder }) === "My Drive/Groovy POS/Sales_Invoices/FY 2026-27/01/GST", pathOf({ parent: janFolder }));
+// running again must not duplicate anything
+const countUnder = (parent, name) => { let n = 0; const it = parent.getFoldersByName(name); while (it.hasNext()) { it.next(); n++; } return n; };
+saveBill("dir-4");
+ctx.savePendingInvoicePdfs();
+newRun();
+const root2 = require("vm").runInContext("invoiceRoot_()", ctx);
+const fy2 = dirNamed(root2, fyName);
+check("no duplicate folders after repeated runs",
+    countUnder(root2, fyName) === 1 && countUnder(fy2, TODAY.slice(5, 7)) === 1 &&
+    countUnder(dirNamed(fy2, TODAY.slice(5, 7)), "GST") === 1,
+    { fy: countUnder(root2, fyName) });
+check("links on older bills still work", !!pdf1.pdf_url && pdf1.pdf_url.indexOf("/d/") > 0, pdf1.pdf_url);
 const pdfTotal = pdfFiles().length;
 check("timer again: nothing new to do", ctx.savePendingInvoicePdfs() === 0 && pdfFiles().length === pdfTotal);
 // turning it off removes the timer and stops the job

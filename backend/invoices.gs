@@ -21,24 +21,20 @@ function pdfFileId_(url) {
     return m ? m[1] : "";
 }
 
+/**
+ * Folders are found by name every run, never remembered by id between runs. A Drive folder keeps its
+ * id through a rename and a move, so remembering ids meant the app silently followed a folder someone
+ * had renamed or filed elsewhere instead of rebuilding the expected path. Within one run the timer may
+ * write many PDFs, and they share these lookups.
+ */
+let PDF_DIRS_ = {};
+
 // Sales_Invoices inside the folder that holds the Sheet (My Drive root if it isn't in a folder)
 function invoiceRoot_() {
-    const props = PropertiesService.getScriptProperties();
-    const cached = props.getProperty("pdf_root_id");
-    if (cached) {
-        try {
-            const f = DriveApp.getFolderById(cached);
-            if (!f.isTrashed()) return f;
-        } catch (e) {
-            /* deleted → find or make it again */
-        }
-    }
+    if (PDF_DIRS_.root) return PDF_DIRS_.root;
     const parents = DriveApp.getFileById(ss_().getId()).getParents();
     const home = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
-    const it = home.getFoldersByName(PDF_ROOT_);
-    const root = it.hasNext() ? it.next() : home.createFolder(PDF_ROOT_);
-    props.setProperty("pdf_root_id", root.getId());
-    return root;
+    return (PDF_DIRS_.root = subFolder_(home, PDF_ROOT_));
 }
 
 // "FY 2026-27" — April to March, like the invoice numbers (GF/26-27/…)
@@ -58,25 +54,14 @@ function isTaxInvoice_(sale) {
     return !!sale && !sale.gst_hidden && !!str_(setting_("gstin"));
 }
 
-// Sales_Invoices/FY 2026-27/09/GST — the folder id is remembered so a PDF needs one Drive lookup
+// Sales_Invoices/FY 2026-27/09/GST — every level is made on the first bill that needs it
 function invoiceFolder_(dateStr, gst) {
     const date = String(dateStr || todayStr_());
     const kind = gst ? "GST" : "Non-GST";
-    const key = "pdf_dir_" + date.slice(0, 7) + "_" + (gst ? "gst" : "nongst");
-    const props = PropertiesService.getScriptProperties();
-    const cached = props.getProperty(key);
-    if (cached) {
-        try {
-            const f = DriveApp.getFolderById(cached);
-            if (!f.isTrashed()) return f;
-        } catch (e) {
-            /* deleted → find or make it again */
-        }
-    }
+    const key = date.slice(0, 7) + "|" + kind;
+    if (PDF_DIRS_[key]) return PDF_DIRS_[key];
     const month = subFolder_(subFolder_(invoiceRoot_(), fyFolderName_(date)), date.slice(5, 7));
-    const folder = subFolder_(month, kind);
-    props.setProperty(key, folder.getId());
-    return folder;
+    return (PDF_DIRS_[key] = subFolder_(month, kind));
 }
 
 /**
@@ -352,6 +337,7 @@ function apiSaveInvoicePdf_(p, ctx) {
 /** Timer (every 15 min): PDFs for new bills and credit notes, and -VOID names for voided bills. */
 function savePendingInvoicePdfs() {
     resetReqCache_();
+    PDF_DIRS_ = {}; // look the folders up again: someone may have moved or renamed them since
     if (setting_("invoice_pdfs") === "no") return;
     const started = Date.now();
     const inTime = () => Date.now() - started < 4 * 60 * 1000; // Apps Script stops at 6 min; the next run continues

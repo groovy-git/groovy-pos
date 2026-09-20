@@ -235,6 +235,8 @@ function createEnv() {
             getScriptProperties: () => ({
                 getProperty: (k) => (props.has(k) ? props.get(k) : null),
                 setProperty: (k, v) => props.set(k, String(v)),
+                getProperties: () => Object.fromEntries(props),
+                deleteProperty: (k) => (props.delete(k), undefined),
             }),
         },
         Session: { getEffectiveUser: () => ({ getEmail: () => "owner@groovy.test" }) },
