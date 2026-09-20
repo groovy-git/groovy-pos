@@ -255,6 +255,7 @@ function apiSaveUser_(p, ctx) {
             if (!u) fail_("User not found");
             if (dup && dup.id !== u.id) fail_("Email already in use");
             if (u.id === ctx.user.id && role !== "admin") fail_("You cannot remove your own admin role");
+            const wasRole = u.role;
             u.name = name;
             u.email = email;
             u.phone = str_(p.phone);
@@ -269,6 +270,9 @@ function apiSaveUser_(p, ctx) {
             }
             u.updated_at = now;
             updateRows_("Users", [u]);
+            // the catalogue carries cost price for managers and admins only, so a role change means
+            // this person's copy is now the wrong shape — bump so their app fetches it again
+            if (u.role !== wasRole) bumpCatalogVersion_();
             log_(ctx, "UPDATE", "Users", u.id, name + " (" + role + ")");
             return { message: "User updated", data: publicUser_(u) };
         }

@@ -776,6 +776,26 @@ check("after a sale: payload sent again, with the new stock",
 const bootGate = envR.call("bootstrap", { catalog_version: afterSale.version, catalog_branch: afterSale.branch_id }, RT2, 1).data;
 check("bootstrap skips an unchanged catalogue too", bootGate.catalog.unchanged === true && !bootGate.catalog.variants && !!bootGate.settings && !!bootGate.user, bootGate.catalog);
 
+// cost price is manager-only, so a role change makes a cached catalogue the wrong shape for that
+// person — the version must move, or the gate above would keep handing them a cost-less copy
+const crewRes = ok(envR.call("saveUser", { name: "Crew", email: "crew@x.in", role: "salesman", password: "secret9" }, RT2), "add a salesman");
+const crewId = crewRes.id;
+const crewToken = () => envR.call("login", { email: "crew@x.in", password: "secret9" }).data.token;
+const CREW = crewToken();
+const crewCat = envR.call("getCatalog", {}, CREW, 1).data;
+check("a salesman's catalogue has no cost price", crewCat.variants.every((v) => v.avg_cost === undefined), Object.keys(crewCat.variants[0]));
+check("a manager's catalogue has cost price", envR.call("getCatalog", {}, RT2).data.variants.some((v) => "avg_cost" in v));
+const verBefore = envR.call("getCatalog", {}, RT2).data.version;
+ok(envR.call("saveUser", { id: crewId, name: "Crew Renamed", email: "crew@x.in", role: "salesman" }, RT2), "edit name only");
+check("editing a name does not make every phone refetch", envR.call("getCatalog", {}, RT2).data.version === verBefore);
+ok(envR.call("saveUser", { id: crewId, name: "Crew Renamed", email: "crew@x.in", role: "manager" }, RT2), "promote to manager");
+const verAfter = envR.call("getCatalog", {}, RT2).data.version;
+check("a role change moves the version", verAfter > verBefore, { verBefore, verAfter });
+const CREW2 = crewToken();
+const crewAgain = envR.call("getCatalog", { catalog_version: crewCat.version, catalog_branch: crewCat.branch_id }, CREW2, 1).data;
+check("the promoted salesman gets a full catalogue, with cost price",
+    !crewAgain.unchanged && crewAgain.variants.some((v) => "avg_cost" in v), crewAgain.unchanged);
+
 // ---- log everyone out: ends logins and touches nothing else ----
 const beforeOut = {
     version: envR.call("getCatalog", {}, RT2).data.version,
