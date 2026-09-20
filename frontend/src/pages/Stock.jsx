@@ -376,7 +376,8 @@ function ImportSheet({ open, onClose }) {
         never duplicated. Opening stock is only used for new sizes; use Stock In for more stock.
         <br />
         You can also upload the product export from your website as it is — its columns are matched automatically, and SKU or barcode finds existing items. A row with no
-        barcode gets its Product Id as one, so the item can still be scanned; a barcode already saved here is never replaced.
+        barcode gets its Product Id as one, so the item can still be scanned, and a row with no minimum quantity gets a reorder level of 2 so it still
+        warns when stock runs low. Anything already saved here — a barcode, a reorder level you set — is never replaced.
       </p>
       <button className="btn secondary block" onClick={() => downloadText("groovy-products-template.csv", IMPORT_TEMPLATE)}>
         <Download size={18} /> Download template

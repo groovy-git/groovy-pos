@@ -461,6 +461,9 @@ function apiImportCatalog_(p, ctx) {
                 // size can be scanned, but never replaces one and never makes the upload fail
                 const fb = code ? "" : normBarcode_(r.barcode_fallback);
                 const freeCode = (c) => !!c && !varByCode[c];
+                // same idea for the reorder level: the website exports no minimum, so a sensible one is
+                // filled in — but only where none is set, never over a level chosen here. 0 for own CSVs.
+                const rfb = num_(r.reorder_fallback);
                 let prod = prodByKey[key] || null;
                 let match = null;
 
@@ -513,7 +516,7 @@ function apiImportCatalog_(p, ctx) {
                             barcode: code || match.barcode || (freeCode(fb) ? fb : ""),
                             mrp: blank(r.mrp) ? match.mrp : r.mrp,
                             sell_price: blank(r.sell_price) ? match.sell_price : r.sell_price,
-                            reorder_level: blank(r.reorder_level) ? match.reorder_level : r.reorder_level,
+                            reorder_level: blank(r.reorder_level) ? (num_(match.reorder_level) > 0 ? match.reorder_level : rfb) : r.reorder_level,
                             cost: blank(r.cost) ? 0 : r.cost,
                         },
                         prod.sale_type,
@@ -555,7 +558,8 @@ function apiImportCatalog_(p, ctx) {
                 const v = cleanVariant_(
                     {
                         size_label: r.size_label, size_ml: r.size_ml, barcode: code || (freeCode(fb) ? fb : ""), mrp: r.mrp,
-                        sell_price: r.sell_price, reorder_level: r.reorder_level, opening_stock: r.opening_stock, cost: r.cost,
+                        sell_price: r.sell_price, reorder_level: blank(r.reorder_level) ? rfb : r.reorder_level,
+                        opening_stock: r.opening_stock, cost: r.cost,
                     },
                     saleType,
                 );

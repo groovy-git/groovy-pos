@@ -385,6 +385,33 @@ check("repeated Product Id: first fills, second blank, no error", !fbDup.errors.
 // a hand-made CSV (no fallback field) behaves exactly as before
 const noFb = ok(call("importCatalog", { rows: [{ brand: "Groovy Fragrances", product: "Plain Row", new_category: "Eau De Parfum", size_label: "5ml", sell_price: 20 }] }, T, 1), "template CSV row");
 check("template CSV unaffected: size created without a barcode", noFb.variants === 1 && noFb.barcodes_filled === 0 && call("getCatalog", {}, T).data.products.some((x) => x.name === "Plain Row"), noFb);
+check("template CSV unaffected: reorder level left at 0", skuVar("SKU-RR-3") && varById(skuVar("SKU-RR-3").id).reorder_level === 0);
+
+// the website exports Min Quantity as 0 on every row, so a size would never warn when it runs low:
+// a reorder level of 2 is filled in — but only where none is set
+const webRow = (o) => Object.assign({ brand: "Groovy Fragrances", new_category: "Eau De Parfum", barcode: "", reorder_fallback: 2 }, o);
+const rlNew = ok(call("importCatalog", { rows: [
+    webRow({ product: "Reorder One", size_label: "30ml", sell_price: 200, sku: "SKU-RL-1", reorder_level: "" }),
+    webRow({ product: "Reorder Two", size_label: "30ml", sell_price: 200, sku: "SKU-RL-2", reorder_level: 5 }),
+] }, T, 1), "website rows with and without a minimum");
+check("blank minimum becomes a reorder level of 2", skuVar("SKU-RL-1").reorder_level === 2, rlNew);
+check("a minimum in the file wins over the fallback", skuVar("SKU-RL-2").reorder_level === 5);
+// re-uploading the same file changes nothing
+const rlAgain = ok(call("importCatalog", { rows: [webRow({ product: "Reorder One", size_label: "30ml", sell_price: 200, sku: "SKU-RL-1", reorder_level: "" })] }, T, 1), "same website file again");
+check("re-upload: reorder level unchanged, nothing to update", rlAgain.unchanged === 1 && skuVar("SKU-RL-1").reorder_level === 2, rlAgain);
+// a level set in the app survives the next upload — the regression this fallback design exists to prevent
+const rl1 = skuVar("SKU-RL-1");
+ok(call("saveProduct", Object.assign({}, call("getCatalog", {}, T).data.products.find((x) => x.id === rl1.product_id), {
+    brand_name: "Groovy Fragrances",
+    variants: [{ id: rl1.id, size_label: "30ml", sell_price: 200, sku: "SKU-RL-1", reorder_level: 6 }],
+}), T, 1), "shop sets its own reorder level");
+const rlKeep = ok(call("importCatalog", { rows: [webRow({ product: "Reorder One", size_label: "30ml", sell_price: 190, sku: "SKU-RL-1", reorder_level: "" })] }, T, 1), "website row over a level set here");
+check("a reorder level set in the app is never replaced", !rlKeep.errors.length && skuVar("SKU-RL-1").reorder_level === 6 && skuVar("SKU-RL-1").sell_price === 190, rlKeep);
+// a size still sitting at 0 (imported before this) is backfilled by the next upload
+const rlOld = ok(call("importCatalog", { rows: [{ brand: "Groovy Fragrances", product: "Reorder Old", new_category: "Eau De Parfum", size_label: "30ml", sell_price: 200, sku: "SKU-RL-3" }] }, T, 1), "size created with no reorder level");
+check("older size starts at 0", rlOld.variants === 1 && skuVar("SKU-RL-3").reorder_level === 0);
+ok(call("importCatalog", { rows: [webRow({ product: "Reorder Old", size_label: "30ml", sell_price: 200, sku: "SKU-RL-3", reorder_level: "" })] }, T, 1), "website re-upload backfills it");
+check("a level still at 0 is backfilled to 2", skuVar("SKU-RL-3").reorder_level === 2);
 
 // ---- setup upgrades an older sheet that lacks a newly added trailing column ----
 const salesSh = env.ss.getSheetByName("Sales");
