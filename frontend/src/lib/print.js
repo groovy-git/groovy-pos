@@ -60,7 +60,7 @@ export function receiptHtml(d, s) {
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(sale.invoice_no)}</title><style>
     @page { size: 80mm auto; margin: 3mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: "Courier New", monospace; font-size: 12px; color: #000; width: 74mm; }
+    body { font-family: "Courier New", monospace; font-size: 12px; color: #000; width: 74mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .c { text-align: center; } .b { font-weight: 700; }
     h1 { font-family: Georgia, serif; font-size: 18px; letter-spacing: 1px; }
     .tag { font-style: italic; font-size: 11px; margin-bottom: 3px; }
@@ -121,21 +121,25 @@ function a4Page(s, title, stamp, body) {
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>
     @page { size: A4; margin: 14mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Helvetica, Arial, sans-serif; font-size: 11px; color: #2b2520; }
+    /* without this Chrome prints no background colours unless the person ticks "Background graphics",
+       so the brown band, the table header and the yellow total would come out blank on paper */
+    body { font-family: Helvetica, Arial, sans-serif; font-size: 11px; color: #2b2520; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     table { border-collapse: collapse; width: 100%; } td, th { vertical-align: top; }
     .muted { color: #8a7f75; } .small { font-size: 10px; } .b { font-weight: bold; }
     .sub { font-size: 9px; color: #8a7f75; }
     .n { text-align: right; white-space: nowrap; }
     .lbl { font-size: 8.5px; letter-spacing: .6px; text-transform: uppercase; color: #8a7f75; }
-    /* every table on the page is the same grid: bordered cells, 10px values, small uppercase headers */
-    .items th { background: #654321; color: #fff; border: 1px solid #654321; padding: 4px 6px; font-size: 8.5px; font-weight: bold; letter-spacing: .4px; text-transform: uppercase; text-align: left; }
-    .items td { border: 1px solid #e7ded2; padding: 4px 6px; font-size: 10px; }
+    /* every table on the page is the same grid: bordered cells, 10px values, small uppercase headers.
+       Borders live in their own rules: the PDF converter that files the Drive copy drops a background
+       whenever the same rule also declares a border. Kept identical here so the two documents match. */
+    .items td, .items th { border: 1px solid #e7ded2; padding: 4px 6px; font-size: 10px; }
+    .items th { background: #654321; color: #fff; font-size: 8.5px; font-weight: bold; letter-spacing: .4px; text-transform: uppercase; text-align: left; }
     .items tbody tr { page-break-inside: avoid; } .items td.mid { vertical-align: middle; }
-    .box { border: 1px solid #e7ded2; background: #faf7f2; }
+    .box { background: #faf7f2; }
     .gst td, .gst th { border: 1px solid #e7ded2; padding: 4px 6px; font-size: 10px; text-align: right; }
     .gst th { background: #f3ece2; font-size: 8.5px; letter-spacing: .4px; text-transform: uppercase; color: #6b6157; }
     .tot td { border: 1px solid #e7ded2; padding: 4px 6px; font-size: 10px; } .tot td.v { text-align: right; white-space: nowrap; }
-    .grand td { background: #f5bf03; color: #2b2520; border: 1px solid #f5bf03; font-size: 11.5px; font-weight: bold; padding: 6px; }
+    .grand td { background: #f5bf03; color: #2b2520; font-size: 11.5px; font-weight: bold; padding: 6px; }
   </style></head><body>
     <table><tr>
       <td style="width:52px;padding-right:10px">${LOGO_SVG}</td>
@@ -148,8 +152,9 @@ function a4Page(s, title, stamp, body) {
       </td>
     </tr></table>
     <div style="border-bottom:3px solid #f5bf03;margin:10px 0 12px"></div>
-    <!-- the document's name heads the page across its full width -->
-    <div style="background:#654321;color:#fff;font-size:12px;font-weight:bold;letter-spacing:3px;padding:6px;text-align:center;margin-bottom:12px">${esc(title)}</div>
+    <!-- the document's name heads the page across its full width. A one-cell table, not a div: the PDF
+         converter behind the Drive copy fills table cells only, and bgcolor is the way it understands -->
+    <table style="margin-bottom:12px"><tr><td bgcolor="#654321" style="background:#654321;color:#ffffff;font-size:12px;font-weight:bold;letter-spacing:3px;padding:6px;text-align:center">${esc(title)}</td></tr></table>
     ${stamp ? `<div style="color:#c62828;font-weight:bold;font-size:14px;text-align:center;margin:-6px 0 12px">${esc(stamp)}</div>` : ""}
     ${body}
     <table style="margin-top:18px"><tr>
@@ -165,7 +170,7 @@ function a4Page(s, title, stamp, body) {
 // four label/value cells in a bordered strip
 const a4Meta = (cells) =>
   `<table class="box"><tr>${cells
-    .map((c) => `<td style="width:25%;padding:4px 6px;border:1px solid #e7ded2;font-size:10px"><div class="lbl">${esc(c[0])}</div>${c[1]}</td>`)
+    .map((c) => `<td bgcolor="#faf7f2" style="width:25%;padding:4px 6px;border:1px solid #e7ded2;font-size:10px"><div class="lbl">${esc(c[0])}</div>${c[1]}</td>`)
     .join("")}</tr></table>`;
 
 export function a4InvoiceHtml(d, s) {
@@ -177,7 +182,7 @@ export function a4InvoiceHtml(d, s) {
   const rows = d.items
     .map((i, n) => {
       const disc = r2(i.discount + (i.bill_disc_share || 0));
-      return `<tr${n % 2 ? ' style="background:#faf7f2"' : ""}><td class="muted">${n + 1}</td>
+      return `<tr${n % 2 ? " bgcolor=\"#faf7f2\"" : ""}><td class="muted">${n + 1}</td>
       <td><b>${esc(itemName(i))}</b>${i.brand ? `<div class="sub">${esc(i.brand)}</div>` : ""}</td>
       ${showGst ? `<td class="small mid">${esc(i.hsn || "")}</td>` : ""}
       <td class="n mid">${qtyLabel(i.qty, i.unit)}</td><td class="n mid muted">${money(i.mrp, i)}</td><td class="n mid">${money(i.price, i)}</td>
@@ -186,13 +191,14 @@ export function a4InvoiceHtml(d, s) {
       <td class="n mid b">${inr(i.line_total)}</td></tr>`;
     })
     .join("");
-  const head = `<tr><th style="width:22px">#</th><th>Item</th>${showGst ? '<th style="width:52px">HSN</th>' : ""}
-    <th class="n" style="width:38px">Qty</th><th class="n" style="width:54px">MRP</th><th class="n" style="width:54px">Rate</th>
-    <th class="n" style="width:50px">Disc</th>${showGst ? '<th class="n" style="width:38px">GST</th><th class="n" style="width:62px">Taxable</th>' : ""}
-    <th class="n" style="width:70px">Amount</th></tr>`;
+  // bgcolor + the repeated white keep the header brown wherever the class rules are only half honoured
+  const th = (w, label, right) => `<th${right ? ' class="n"' : ""} bgcolor="#654321" style="color:#ffffff;${w ? `width:${w}` : ""}">${label}</th>`;
+  const head = `<tr>${th("22px", "#")}${th("", "Item")}${showGst ? th("52px", "HSN") : ""}
+    ${th("38px", "Qty", 1)}${th("54px", "MRP", 1)}${th("54px", "Rate", 1)}${th("50px", "Disc", 1)}
+    ${showGst ? th("38px", "GST", 1) + th("62px", "Taxable", 1) : ""}${th("70px", "Amount", 1)}</tr>`;
   const gstTable = showGst
     ? `<div class="lbl" style="margin-bottom:4px">GST summary (prices include GST)</div>
-       <table class="gst" style="width:auto"><tr><th>Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>Total tax</th></tr>
+       <table class="gst" style="width:auto"><tr><th bgcolor="#f3ece2">Rate</th><th bgcolor="#f3ece2">Taxable</th><th bgcolor="#f3ece2">CGST</th><th bgcolor="#f3ece2">SGST</th><th bgcolor="#f3ece2">Total tax</th></tr>
        ${rates.map((r) => `<tr><td>${r.rate}%</td><td>${r.taxable.toFixed(2)}</td><td>${(r.tax / 2).toFixed(2)}</td><td>${(r.tax - r2(r.tax / 2)).toFixed(2)}</td><td>${r.tax.toFixed(2)}</td></tr>`).join("")}</table>`
     : "";
   const line = (l, v, cls) => `<tr class="${cls || ""}"><td>${l}</td><td class="v">${v}</td></tr>`;
@@ -205,7 +211,7 @@ export function a4InvoiceHtml(d, s) {
       ${disc > 0 ? line("Discount", "-" + inr(disc)) : ""}
       ${showGst ? line("Taxable value", inr(sale.taxable, { paise: true })) + line("CGST", inr(sale.cgst, { paise: true })) + line("SGST", inr(sale.sgst, { paise: true })) : ""}
       ${sale.round_off ? line("Round off", inr(sale.round_off, { paise: true })) : ""}</table>
-    <table class="tot" style="margin-top:2px"><tr class="grand"><td>Grand Total</td><td class="v">${inr(sale.grand_total)}</td></tr></table>
+    <table class="tot" style="margin-top:2px"><tr class="grand"><td bgcolor="#f5bf03">Grand Total</td><td class="v" bgcolor="#f5bf03">${inr(sale.grand_total)}</td></tr></table>
     <table class="tot">
       ${pays.map((p) => line("Paid · " + (METHOD_LABEL[p.method] || esc(p.method)), inr(p.amount))).join("")}
       ${balance > 0 ? line("<b>Balance due</b>", "<b>" + inr(balance) + "</b>") : balance < 0 ? line("Change given", inr(-balance)) : ""}

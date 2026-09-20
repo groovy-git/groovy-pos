@@ -152,15 +152,17 @@ function pdfPage_(shop, title, stamp, body, notes) {
         ".muted{color:#8a7f75}.small{font-size:10px}.b{font-weight:bold}.n{text-align:right;white-space:nowrap}" +
         ".sub{font-size:9px;color:#8a7f75}" +
         ".lbl{font-size:8.5px;letter-spacing:.6px;text-transform:uppercase;color:#8a7f75}" +
-        // every table on the page is the same grid: bordered cells, 10px values, small uppercase headers
-        ".items th{background:#654321;color:#ffffff;border:1px solid #654321;padding:4px 6px;font-size:8.5px;font-weight:bold;letter-spacing:.4px;text-transform:uppercase;text-align:left}" +
-        ".items td{border:1px solid #e7ded2;padding:4px 6px;font-size:10px}" +
+        // every table on the page is the same grid: bordered cells, 10px values, small uppercase headers.
+        // Borders are set in their own rules: Google's HTML→PDF converter drops a `background` whenever
+        // the same rule also declares a `border`, which is how the brown and yellow fills went missing.
+        ".items td,.items th{border:1px solid #e7ded2;padding:4px 6px;font-size:10px}" +
+        ".items th{background:#654321;color:#ffffff;font-size:8.5px;font-weight:bold;letter-spacing:.4px;text-transform:uppercase;text-align:left}" +
         ".items tbody tr{page-break-inside:avoid}.items td.mid{vertical-align:middle}" +
-        ".box{border:1px solid #e7ded2;background:#faf7f2}" +
+        ".box{background:#faf7f2}" +
         ".gst td,.gst th{border:1px solid #e7ded2;padding:4px 6px;font-size:10px;text-align:right}" +
         ".gst th{background:#f3ece2;font-size:8.5px;letter-spacing:.4px;text-transform:uppercase;color:#6b6157}" +
         ".tot td{border:1px solid #e7ded2;padding:4px 6px;font-size:10px}.tot td.v{text-align:right;white-space:nowrap}" +
-        ".grand td{background:#f5bf03;color:#2b2520;border:1px solid #f5bf03;font-size:11.5px;font-weight:bold;padding:6px}" +
+        ".grand td{background:#f5bf03;color:#2b2520;font-size:11.5px;font-weight:bold;padding:6px}" +
         "</style></head><body>" +
         // letterhead
         '<table><tr>' +
@@ -173,8 +175,9 @@ function pdfPage_(shop, title, stamp, body, notes) {
         (shop.gstin ? '<div class="small b">GSTIN: ' + e(shop.gstin) + " · State: " + e(shop.state_name || "") + " (" + e(shop.state_code || "") + ")</div>" : "") +
         "</td></tr></table>" +
         '<div style="border-bottom:3px solid #f5bf03;margin:10px 0 12px"></div>' +
-        // the document's name heads the page across its full width
-        '<div style="background:#654321;color:#fff;font-size:12px;font-weight:bold;letter-spacing:3px;padding:6px;text-align:center;margin-bottom:12px">' + e(title) + "</div>" +
+        // the document's name heads the page across its full width. A one-cell table, not a div: the
+        // PDF converter fills table cells only, and bgcolor is the one way of saying it that it honours
+        '<table style="margin-bottom:12px"><tr><td bgcolor="#654321" style="background:#654321;color:#ffffff;font-size:12px;font-weight:bold;letter-spacing:3px;padding:6px;text-align:center">' + e(title) + "</td></tr></table>" +
         (stamp ? '<div style="color:#c62828;font-weight:bold;font-size:14px;text-align:center;margin:-6px 0 12px">' + e(stamp) + "</div>" : "") +
         body +
         // notes + signature
@@ -188,10 +191,14 @@ function pdfPage_(shop, title, stamp, body, notes) {
     );
 }
 
+// A filled header cell. bgcolor is the one way of asking that the PDF converter honours, and the white
+// is repeated inline so the text can never end up dark-on-brown if the class rule is dropped.
+const TH_BROWN_ = '<th bgcolor="#654321" style="color:#ffffff;';
+
 /** Four label/value cells in a bordered strip. */
 function pdfMeta_(cells) {
     const e = escHtml_;
-    const cell = (c) => '<td style="width:25%;padding:4px 6px;border:1px solid #e7ded2;font-size:10px"><div class="lbl">' + e(c[0]) + "</div>" + c[1] + "</td>";
+    const cell = (c) => '<td bgcolor="#faf7f2" style="width:25%;padding:4px 6px;border:1px solid #e7ded2;font-size:10px"><div class="lbl">' + e(c[0]) + "</div>" + c[1] + "</td>";
     return '<table class="box">' + "<tr>" + cells.map(cell).join("") + "</tr></table>";
 }
 
@@ -210,7 +217,7 @@ function invoicePdfHtml_(d) {
     });
     const rows = d.items
         .map((i, n) => {
-            const bg = n % 2 ? ' style="background:#faf7f2"' : "";
+            const bg = n % 2 ? ' bgcolor="#faf7f2"' : "";
             return "<tr" + bg + '><td class="muted">' + (n + 1) + "</td><td><b>" + e(name(i)) + "</b>" +
                 (i.brand ? '<div class="sub">' + e(i.brand) + "</div>" : "") + "</td>" +
                 (showGst ? '<td class="small mid">' + e(i.hsn || "") + "</td>" : "") +
@@ -221,15 +228,15 @@ function invoicePdfHtml_(d) {
         })
         .join("");
     const head =
-        '<tr><th style="width:22px">#</th><th>Item</th>' + (showGst ? '<th style="width:52px">HSN</th>' : "") +
-        '<th class="n" style="width:38px">Qty</th><th class="n" style="width:54px">MRP</th><th class="n" style="width:54px">Rate</th>' +
-        '<th class="n" style="width:50px">Disc</th>' +
-        (showGst ? '<th class="n" style="width:38px">GST</th><th class="n" style="width:62px">Taxable</th>' : "") +
-        '<th class="n" style="width:70px">Amount</th></tr>';
+        "<tr>" + TH_BROWN_ + 'width:22px">#</th>' + TH_BROWN_ + '">Item</th>' + (showGst ? TH_BROWN_ + 'width:52px">HSN</th>' : "") +
+        '<th class="n" bgcolor="#654321" style="color:#ffffff;width:38px">Qty</th><th class="n" bgcolor="#654321" style="color:#ffffff;width:54px">MRP</th>' +
+        '<th class="n" bgcolor="#654321" style="color:#ffffff;width:54px">Rate</th><th class="n" bgcolor="#654321" style="color:#ffffff;width:50px">Disc</th>' +
+        (showGst ? '<th class="n" bgcolor="#654321" style="color:#ffffff;width:38px">GST</th><th class="n" bgcolor="#654321" style="color:#ffffff;width:62px">Taxable</th>' : "") +
+        '<th class="n" bgcolor="#654321" style="color:#ffffff;width:70px">Amount</th></tr>';
 
     const gstTable = showGst
         ? '<div class="lbl" style="margin-bottom:4px">GST summary (prices include GST)</div><table class="gst" style="width:auto">' +
-          '<tr><th>Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>Total tax</th></tr>' +
+          '<tr><th bgcolor="#f3ece2">Rate</th><th bgcolor="#f3ece2">Taxable</th><th bgcolor="#f3ece2">CGST</th><th bgcolor="#f3ece2">SGST</th><th bgcolor="#f3ece2">Total tax</th></tr>' +
           Object.keys(rates).map((k) => rates[k]).sort((a, b) => a.rate - b.rate)
               .map((r) => "<tr><td>" + r.rate + "%</td><td>" + r.taxable.toFixed(2) + "</td><td>" + (r.tax / 2).toFixed(2) + "</td><td>" + (r.tax - r2_(r.tax / 2)).toFixed(2) + "</td><td>" + r.tax.toFixed(2) + "</td></tr>")
               .join("") + "</table>"
@@ -246,7 +253,7 @@ function invoicePdfHtml_(d) {
         (disc > 0 ? line("Discount", "-" + inrText_(disc)) : "") +
         (showGst ? line("Taxable value", inrText_(sale.taxable)) + line("CGST", inrText_(sale.cgst)) + line("SGST", inrText_(sale.sgst)) : "") +
         (sale.round_off ? line("Round off", inrText_(sale.round_off)) : "") +
-        '</table><table class="tot" style="margin-top:2px"><tr class="grand"><td>Grand Total</td><td class="v">' + inrText_(sale.grand_total) + "</td></tr></table>" +
+        '</table><table class="tot" style="margin-top:2px"><tr class="grand"><td bgcolor="#f5bf03">Grand Total</td><td class="v" bgcolor="#f5bf03">' + inrText_(sale.grand_total) + "</td></tr></table>" +
         '<table class="tot">' +
         pays.map((p) => line("Paid · " + (METHOD_NAME_[p.method] || e(p.method)), inrText_(p.amount))).join("") +
         (balance > 0 ? line("<b>Balance due</b>", "<b>" + inrText_(balance) + "</b>") : balance < 0 ? line("Change given", inrText_(-balance)) : "") +
@@ -275,7 +282,7 @@ function creditNoteHtml_(r) {
         .map((x, n) => {
             const si = saleItems[x.sale_item_id] || {};
             const nm = (si.product_name || "Item") + (si.size && si.unit !== "ml" ? " " + si.size : "");
-            const bg = n % 2 ? ' style="background:#faf7f2"' : "";
+            const bg = n % 2 ? ' bgcolor="#faf7f2"' : "";
             return "<tr" + bg + '><td class="muted">' + (n + 1) + "</td><td><b>" + e(nm) + '</b></td><td class="n">' + (si.unit === "ml" ? r3_(x.qty) + " ml" : x.qty) +
                 '</td><td class="n">' + Number(x.taxable).toFixed(2) + '</td><td class="n">' + Number(x.tax).toFixed(2) + '</td><td class="n b">' + inrText_(x.amount) + "</td></tr>";
         })
@@ -283,7 +290,7 @@ function creditNoteHtml_(r) {
     const line = (l, v, cls) => '<tr class="' + (cls || "") + '"><td>' + l + '</td><td class="v">' + v + "</td></tr>";
     const totals =
         '<table class="tot">' + line("Taxable value", inrText_(r.taxable)) + line("GST", inrText_(r.tax)) +
-        '</table><table class="tot" style="margin-top:2px"><tr class="grand"><td>Refund</td><td class="v">' + inrText_(r.total) + "</td></tr></table>" +
+        '</table><table class="tot" style="margin-top:2px"><tr class="grand"><td bgcolor="#f5bf03">Refund</td><td class="v" bgcolor="#f5bf03">' + inrText_(r.total) + "</td></tr></table>" +
         '<table class="tot">' + line("Refunded by", e(METHOD_NAME_[r.refund_method] || r.refund_method || "")) + "</table>";
     const body =
         pdfMeta_([
@@ -292,8 +299,10 @@ function creditNoteHtml_(r) {
             ["Against Invoice", e(r.invoice_no) + (sale.date ? "<br>" + pdfDate_(String(sale.date).slice(0, 10)) : "")],
             ["Customer", e(sale.customer_name || "Walk-in customer") + (sale.customer_phone ? "<br>" + e(sale.customer_phone) : "")],
         ]) +
-        '<table class="items" style="margin-top:12px"><thead><tr><th style="width:22px">#</th><th>Item returned</th><th class="n" style="width:46px">Qty</th>' +
-        '<th class="n" style="width:66px">Taxable</th><th class="n" style="width:58px">GST</th><th class="n" style="width:74px">Amount</th></tr></thead><tbody>' + rows2 + "</tbody></table>" +
+        '<table class="items" style="margin-top:12px"><thead><tr>' + TH_BROWN_ + 'width:22px">#</th>' + TH_BROWN_ + '">Item returned</th>' +
+        '<th class="n" bgcolor="#654321" style="color:#ffffff;width:46px">Qty</th><th class="n" bgcolor="#654321" style="color:#ffffff;width:66px">Taxable</th>' +
+        '<th class="n" bgcolor="#654321" style="color:#ffffff;width:58px">GST</th><th class="n" bgcolor="#654321" style="color:#ffffff;width:74px">Amount</th>' +
+        "</tr></thead><tbody>" + rows2 + "</tbody></table>" +
         '<table style="margin-top:14px"><tr><td style="padding-right:16px">' + (r.reason ? '<div class="lbl">Reason</div><div class="small">' + e(r.reason) + "</div>" : "") +
         '</td><td style="width:265px">' + totals + "</td></tr></table>";
     return pdfPage_(pdfShop_(r.branch_id), "CREDIT NOTE", "", body, "");
