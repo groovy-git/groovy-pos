@@ -556,10 +556,29 @@ const pdfSale = ok(call("completeSale", pdfSaleReq, T, 1), "sale for PDF").sale;
 const pdf1 = ok(call("saveInvoicePdf", { id: pdfSale.id }, T, 1), "save PDF manually");
 const pdfFile = pdfFiles().find((f) => f.name === pdfSale.invoice_no.replace(/\//g, "-") + ".pdf");
 const fyDir = (d) => require("vm").runInContext("fyFolderName_(" + JSON.stringify(String(d)) + ")", ctx);
-check("PDF saved in Sales_Invoices/FY yyyy-yy/MM", !!pdfFile && pathOf(pdfFile) === "My Drive/Groovy POS/Sales_Invoices/" + fyDir(pdfSale.date) + "/" + String(pdfSale.date).slice(5, 7), pdfFile && pathOf(pdfFile));
+const monthDir = (d) => "My Drive/Groovy POS/Sales_Invoices/" + fyDir(d) + "/" + String(d).slice(5, 7);
+check("PDF saved in Sales_Invoices/FY yyyy-yy/MM/<kind>", !!pdfFile && pathOf(pdfFile) === monthDir(pdfSale.date) + "/Non-GST", pdfFile && pathOf(pdfFile));
 check("FY folder names", fyDir("2026-09-19") === "FY 2026-27" && fyDir("2027-02-10") === "FY 2026-27" && fyDir("2026-03-31") === "FY 2025-26" && fyDir("2099-12-01") === "FY 2099-00");
-const febFolder = require("vm").runInContext('invoiceFolder_("2026-02-15")', ctx);
-check("Feb bill goes to FY 2025-26/02", pathOf({ parent: febFolder }) === "My Drive/Groovy POS/Sales_Invoices/FY 2025-26/02", pathOf({ parent: febFolder }));
+const febFolder = require("vm").runInContext('invoiceFolder_("2026-02-15", false)', ctx);
+check("Feb bill goes to FY 2025-26/02", pathOf({ parent: febFolder }) === "My Drive/Groovy POS/Sales_Invoices/FY 2025-26/02/Non-GST", pathOf({ parent: febFolder }));
+
+// GST bills go to the accountant's folder; bills without GST (or with no GSTIN set) go next door
+ok(call("saveSettings", { settings: { gstin: "27ABCDE1234F1Z5" } }, T), "set GSTIN");
+const gstSale = ok(call("completeSale", { client_ref: "pdf-gst", lines: [{ variant_id: vBottle.id, qty: 1 }], payments: [{ method: "cash", amount: 50 }] }, T, 1), "GST bill").sale;
+ok(call("saveInvoicePdf", { id: gstSale.id }, T, 1), "save GST bill PDF");
+const gstFile = pdfFiles().find((f) => f.name.startsWith(gstSale.invoice_no.replace(/[/]/g, "-")));
+check("bill with GST → GST folder", gstFile && pathOf(gstFile) === monthDir(gstSale.date) + "/GST", gstFile && pathOf(gstFile));
+const noGstSale = ok(call("completeSale", { client_ref: "pdf-nogst", gst_hidden: true, lines: [{ variant_id: vBottle.id, qty: 1 }], payments: [{ method: "cash", amount: 50 }] }, T, 1), "bill without GST shown").sale;
+ok(call("saveInvoicePdf", { id: noGstSale.id }, T, 1), "save non-GST bill PDF");
+const noGstFile = pdfFiles().find((f) => f.name.startsWith(noGstSale.invoice_no.replace(/[/]/g, "-")));
+check("bill with GST hidden → Non-GST folder", noGstFile && pathOf(noGstFile) === monthDir(noGstSale.date) + "/Non-GST", noGstFile && pathOf(noGstFile));
+// a credit note is filed with its bill
+const gstDetail = ok(call("getSale", { id: gstSale.id }, T, 1), "GST bill detail");
+ok(call("returnItems", { sale_id: gstSale.id, items: [{ sale_item_id: gstDetail.items[0].id, qty: 1, restock: true }], refund_method: "cash", reason: "test" }, T, 1), "return on the GST bill");
+ctx.savePendingInvoicePdfs();
+const cnFile = pdfFiles().filter((f) => /C-|CN-/.test(f.name)).pop();
+check("credit note filed with its bill", cnFile && pathOf(cnFile).endsWith("/GST"), cnFile && pathOf(cnFile));
+ok(call("saveSettings", { settings: { gstin: "" } }, T), "clear GSTIN again");
 check("pdf_url stored on the bill", !!pdf1.pdf_url && ok(call("getSale", { id: pdfSale.id }, T, 1), "bill detail").sale.pdf_url === pdf1.pdf_url);
 check("PDF html escapes customer name", pdfFile && pdfFile.html.includes("&lt;b&gt;Evil&lt;/b&gt; &amp; Co") && !pdfFile.html.includes("<b>Evil"));
 const pdfCount = pdfFiles().length;
@@ -582,7 +601,8 @@ check("timer: every bill and credit note now has a PDF", jobDone > 0 && pdfLeft 
 check("credit notes saved as PDFs", require("vm").runInContext('rows_("Returns").every((r) => r.pdf_url)', ctx) &&
     pdfFiles().some((f) => /C-|CN-/.test(f.name) && f.html.includes("CREDIT NOTE")));
 // old yyyy-MM folders (before the FY layout) are moved into FY …/MM by the timer; links stay the same
-const pdfRootF = env.drive.files().length && pdfFile.parent.parent.parent; // Sales_Invoices
+let pdfRootF = pdfFile.parent; // walk up to Sales_Invoices
+while (pdfRootF && pdfRootF.name !== "Sales_Invoices") pdfRootF = pdfRootF.parent;
 const oldDir = pdfRootF.createFolder("2026-08");
 const oldPdf = oldDir.createFile({ name: "GF-26-27-OLD01.pdf", mime: "application/pdf", html: "old" });
 const oldUrl = oldPdf.getUrl();

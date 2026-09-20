@@ -1,5 +1,7 @@
 /**
- * Invoice PDFs in Google Drive:  <folder of the Sheet>/Sales_Invoices/FY 2026-27/09/GF-26-27-00001.pdf
+ * Invoice PDFs in Google Drive:  <folder of the Sheet>/Sales_Invoices/FY 2026-27/09/GST/GF-26-27-00001.pdf
+ *   - GST folder = bills printed as TAX INVOICE (GST shown and the shop's GSTIN set); the rest go to Non-GST,
+ *     so the accountant can take just the GST folder;
  *   - made here on the server from the saved bill (the phone only asks), so the app stays light;
  *   - every 15 min a timer saves PDFs for new bills and credit notes (checkout is never slowed down);
  *   - "Save PDF to Drive" on a bill does it at once; a voided bill's PDF is renamed …-VOID.pdf.
@@ -51,10 +53,16 @@ function subFolder_(parent, name) {
     return it.hasNext() ? it.next() : parent.createFolder(name);
 }
 
-// Sales_Invoices/FY 2026-27/09 — the month folder id is remembered so a PDF needs one Drive lookup
-function invoiceFolder_(dateStr) {
+// a bill is a tax invoice when it shows GST and the shop has a GSTIN — the same rule as the PDF's title
+function isTaxInvoice_(sale) {
+    return !!sale && !sale.gst_hidden && !!str_(setting_("gstin"));
+}
+
+// Sales_Invoices/FY 2026-27/09/GST — the folder id is remembered so a PDF needs one Drive lookup
+function invoiceFolder_(dateStr, gst) {
     const date = String(dateStr || todayStr_());
-    const key = "pdf_dir_" + date.slice(0, 7);
+    const kind = gst ? "GST" : "Non-GST";
+    const key = "pdf_dir_" + date.slice(0, 7) + "_" + (gst ? "gst" : "nongst");
     const props = PropertiesService.getScriptProperties();
     const cached = props.getProperty(key);
     if (cached) {
@@ -66,8 +74,9 @@ function invoiceFolder_(dateStr) {
         }
     }
     const month = subFolder_(subFolder_(invoiceRoot_(), fyFolderName_(date)), date.slice(5, 7));
-    props.setProperty(key, month.getId());
-    return month;
+    const folder = subFolder_(month, kind);
+    props.setProperty(key, folder.getId());
+    return folder;
 }
 
 /**
@@ -80,7 +89,7 @@ function migratePdfFolders_(inTime) {
     while (folders.hasNext() && inTime()) {
         const old = folders.next();
         if (!/^\d{4}-\d{2}$/.test(old.getName())) continue;
-        const target = invoiceFolder_(old.getName() + "-01");
+        const target = subFolder_(subFolder_(invoiceRoot_(), fyFolderName_(old.getName() + "-01")), old.getName().slice(5, 7));
         const files = old.getFiles();
         while (files.hasNext() && inTime()) {
             files.next().moveTo(target);
@@ -329,7 +338,7 @@ function creditNoteHtml_(r) {
 // builds the PDF outside the lock (it takes a couple of seconds), then records it under a short lock
 function savePdfForSale_(s) {
     const voided = s.status === "voided";
-    const url = makePdf_(invoicePdfHtml_(saleDetail_(s, null)), pdfName_(s.invoice_no, voided), invoiceFolder_(s.date));
+    const url = makePdf_(invoicePdfHtml_(saleDetail_(s, null)), pdfName_(s.invoice_no, voided), invoiceFolder_(s.date, isTaxInvoice_(s)));
     const stored = url + (voided ? PDF_VOID_MARK_ : "");
     return withLock_(() => {
         const fresh = findBy_("Sales", "id", s.id);
@@ -345,7 +354,10 @@ function savePdfForSale_(s) {
 }
 
 function savePdfForReturn_(r) {
-    const url = makePdf_(creditNoteHtml_(r), pdfName_(r.credit_note_no, false), invoiceFolder_(r.at));
+    // a credit note is filed with the bill it belongs to
+    const sale = findBy_("Sales", "id", r.sale_id);
+    const gst = sale ? isTaxInvoice_(sale) : !!str_(setting_("gstin"));
+    const url = makePdf_(creditNoteHtml_(r), pdfName_(r.credit_note_no, false), invoiceFolder_(r.at, gst));
     withLock_(() => {
         const fresh = findBy_("Returns", "id", r.id);
         if (!fresh) return;

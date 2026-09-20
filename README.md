@@ -179,11 +179,17 @@ Every bill is also kept as an A4 PDF in your Google Drive:
 ```
 <folder that holds the Sheet, e.g. Groovy POS>/
   Sales_Invoices/
-    2026-09/
-      GF-26-27-00001.pdf        ← sale invoice (named by invoice number)
-      GF-CN-26-27-0001.pdf      ← credit note for a return
-      GF-26-27-00007-VOID.pdf   ← a voided bill keeps its PDF, renamed
+    FY 2026-27/                 ← April to March, like your bill numbers
+      09/                       ← month
+        GST/
+          GF-26-27-00001.pdf    ← sale invoice (named by invoice number)
+          GF-CN-26-27-0001.pdf  ← credit note for a return
+          GF-26-27-00007-VOID.pdf  ← a voided bill keeps its PDF, renamed
+        Non-GST/
+          GF-26-27-00024.pdf
 ```
+
+- **GST / Non-GST:** a bill goes to **GST** when it is printed as a **TAX INVOICE** — that is, "Show GST on bill" was on **and** your GSTIN is set in Settings. Everything else goes to **Non-GST**. Your accountant can then take just the GST folder. A credit note is filed with its original bill.
 
 - **Automatic:** every 15 minutes Google saves PDFs for new bills and credit notes. Checkout is never slowed down, and anything that fails is retried on the next run.
 - **By hand:** open **Sales → a bill → Save PDF to Drive** (about 2–3 seconds). If the bill already has a PDF it shows **"PDF saved in Google Drive"**; admins get an **Open** link.
@@ -251,7 +257,7 @@ Every bill is also kept as an A4 PDF in your Google Drive:
 
 ```
 backend/   Apps Script (.gs): api.gs (doPost + role ACL), auth, catalog, inventory, sales, reports…
-  dev/     mock-gas.js (in-memory Apps Script + Sheets), e2e.js (351 checks), server.js (local API)
+  dev/     mock-gas.js (in-memory Apps Script + Sheets), e2e.js (362 checks), server.js (local API)
 frontend/  Vite + React PWA: src/pages (screens), src/lib (api, GST cart maths, printing), src/hooks (scanners)
 ```
 
