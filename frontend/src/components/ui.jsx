@@ -80,6 +80,29 @@ export function SkeletonList({ rows = 5, height = 62 }) {
 // things a tap is meant to act on — tapping any of these leaves the keyboard alone
 const TAPPABLE = "button, a, input, select, textarea, label, [role=button]";
 
+/**
+ * Swallow the click that the tap in progress is about to produce.
+ * Not the pointerdown — preventing that would cancel touch scrolling too, and lists could no longer
+ * be dragged. Deliberately outside the component: blurring re-renders SearchBar, and a cleanup that
+ * removed this would take it away a moment before the click it exists to catch.
+ */
+let eatTimer = null;
+function eatNextClick() {
+  const done = () => {
+    clearTimeout(eatTimer);
+    eatTimer = null;
+    document.removeEventListener("click", eat, true);
+  };
+  const eat = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    done();
+  };
+  if (eatTimer) clearTimeout(eatTimer);
+  document.addEventListener("click", eat, true);
+  eatTimer = setTimeout(done, 700); // the finger may have scrolled away instead of tapping
+}
+
 export function SearchBar({ value, onChange, placeholder = "Search", onScan, autoFocus, inputRef }) {
   const self = useRef(null);
   const [focused, setFocused] = useState(false);
@@ -93,16 +116,22 @@ export function SearchBar({ value, onChange, placeholder = "Search", onScan, aut
   );
 
   /**
-   * On a phone the keyboard hides half the screen and the only way to close it is to tap something,
-   * which then does whatever that something does. So while a search box has focus: scrolling or
-   * tapping an empty area puts the keyboard away. Taps on real controls are left completely alone —
-   * on Sell, search-then-tap-to-add is the billing flow and must stay one tap.
+   * On a phone the keyboard hides half the screen, and the only way to put it away used to be to tap
+   * something — which then did whatever that something does, so products joined bills nobody chose.
+   * While a search box has focus: scrolling or tapping an empty area closes the keyboard, and a tap
+   * on a product closes it *instead of* acting. The next tap works normally.
+   * Only on touch, and only while the keyboard is really covering the screen, so a Bluetooth scanner
+   * and the laptop are untouched.
    */
   useEffect(() => {
     if (!focused) return;
     const since = Date.now();
     let idle;
     const blur = () => self.current && self.current.blur();
+    const keyboardUp = () => {
+      const vv = window.visualViewport;
+      return !!vv && vv.height < window.innerHeight * 0.85;
+    };
     /**
      * Once scrolling has settled — not on the first scroll event. Closing the keyboard mid-gesture
      * resizes the viewport while the content is still moving, and since the shell is sized in dvh
@@ -115,7 +144,14 @@ export function SearchBar({ value, onChange, placeholder = "Search", onScan, aut
     };
     const onDown = (e) => {
       const t = e.target;
-      if (!t || typeof t.closest !== "function" || !t.closest(TAPPABLE)) blur();
+      if (!t || typeof t.closest !== "function") return;
+      if (t.closest(".search")) return; // the clear and camera buttons must work while typing
+      if (!t.closest(TAPPABLE)) return blur(); // empty space: just put the keyboard away
+      // a real control in the content area, tapped with the keyboard covering it: dismiss only
+      if (e.pointerType === "touch" && keyboardUp() && t.closest(".page")) {
+        blur();
+        eatNextClick();
+      }
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     document.addEventListener("pointerdown", onDown, true);
