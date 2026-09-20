@@ -28,6 +28,16 @@ export function monthStart() {
   return istDate().slice(0, 8) + "01";
 }
 
+// month names written out, so every device reads the same (browsers differ: "Sep" vs "Sept")
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// day / month / year of an IST timestamp
+function istParts(d) {
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  const get = (t) => Number(p.find((x) => x.type === t).value);
+  return { day: get("day"), month: get("month"), year: get("year") };
+}
+
 // server timestamps are IST "yyyy-MM-dd HH:mm:ss"
 function parseIst(s) {
   if (!s) return null;
@@ -38,13 +48,16 @@ function parseIst(s) {
 export function fmtDateTime(s) {
   const d = parseIst(s);
   if (!d) return "";
-  return d.toLocaleString("en-IN", { timeZone: TZ, day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  const { day, month } = istParts(d);
+  const time = d.toLocaleTimeString("en-IN", { timeZone: TZ, hour: "numeric", minute: "2-digit" });
+  return `${day} ${MONTHS[month - 1]}, ${time}`;
 }
 
 export function fmtDate(s) {
   const d = parseIst(String(s).length === 10 ? s + " 00:00:00" : s);
   if (!d) return "";
-  return d.toLocaleDateString("en-IN", { timeZone: TZ, day: "numeric", month: "short", year: "numeric" });
+  const { day, month, year } = istParts(d);
+  return `${day} ${MONTHS[month - 1]} ${year}`;
 }
 
 export function fmtTime(s) {

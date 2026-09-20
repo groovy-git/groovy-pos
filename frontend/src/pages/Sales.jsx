@@ -5,7 +5,7 @@ import { api } from "../lib/api";
 import { navigate } from "../lib/router";
 import { inr, istDate, monthStart, fmtTime, relDay, METHOD_LABEL } from "../lib/format";
 import TopBar from "../components/TopBar";
-import { Chips, Empty, SearchBar, SkeletonList } from "../components/ui";
+import { Chips, DateField, Empty, SearchBar, SkeletonList } from "../components/ui";
 
 const PRESETS = [
   { value: "today", label: "Today", range: () => [istDate(), istDate()] },
@@ -75,8 +75,8 @@ export default function Sales() {
         <Chips options={PRESETS} value={f.preset} onChange={(p) => setFilter({ preset: p })} />
         {f.preset === "custom" && (
           <div className="grid-2 mt">
-            <input className="input" type="date" value={f.from} max={f.to} onChange={(e) => setFilter({ from: e.target.value })} aria-label="From date" />
-            <input className="input" type="date" value={f.to} min={f.from} max={istDate()} onChange={(e) => setFilter({ to: e.target.value })} aria-label="To date" />
+            <DateField value={f.from} max={f.to} onChange={(e) => setFilter({ from: e.target.value })} aria-label="From date" />
+            <DateField value={f.to} min={f.from} max={istDate()} onChange={(e) => setFilter({ to: e.target.value })} aria-label="To date" />
           </div>
         )}
         {isManager && (

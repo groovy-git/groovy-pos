@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Search, ScanLine, Minus, Plus, PackageOpen, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Search, ScanLine, Minus, Plus, PackageOpen, ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import { useBackClose } from "../hooks/useBackClose";
 import { useApp } from "../store";
-import { initials } from "../lib/format";
+import { fmtDate, initials } from "../lib/format";
 import { imageUrl } from "../lib/catalog";
 
 // Rendered into <body> so a sheet opened from inside a styled container (e.g. the brown
@@ -130,6 +130,20 @@ export function Stepper({ value, onChange, min = 0, max = Infinity, step = 1, de
       <button type="button" onClick={() => onChange(clamp(value + step))} aria-label="More">
         <Plus size={18} />
       </button>
+    </div>
+  );
+}
+
+/**
+ * Date box. The phone's own date picker opens on tap (the real input lies invisible on top), but the
+ * date is written the same everywhere — 20 Sep 2026 — instead of each device's own format.
+ */
+export function DateField({ value, onChange, min, max, "aria-label": label = "Date" }) {
+  return (
+    <div className="date-field">
+      <span className={value ? "" : "muted"}>{value ? fmtDate(value) : "Pick a date"}</span>
+      <Calendar size={18} />
+      <input type="date" value={value || ""} min={min} max={max} onChange={onChange} aria-label={label} />
     </div>
   );
 }

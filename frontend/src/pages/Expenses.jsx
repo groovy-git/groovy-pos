@@ -5,7 +5,7 @@ import { api } from "../lib/api";
 import { runBusy } from "../lib/busy";
 import { inr, istDate, monthStart, relDay, METHOD_LABEL } from "../lib/format";
 import TopBar from "../components/TopBar";
-import { Button, Chips, Empty, Field, MoneyInput, Seg, Sheet, SkeletonList, useConfirm } from "../components/ui";
+import { Button, Chips, DateField, Empty, Field, MoneyInput, Seg, Sheet, SkeletonList, useConfirm } from "../components/ui";
 
 function lastMonth() {
   const [y, m] = istDate().split("-").map(Number);
@@ -155,7 +155,7 @@ function ExpenseSheet({ e, onClose, onSaved }) {
       </Field>
       <div className="grid-2">
         <Field label="Date">
-          <input className="input" type="date" max={istDate()} value={f.date || istDate()} onChange={(ev) => setF({ ...f, date: ev.target.value })} />
+          <DateField max={istDate()} value={f.date || istDate()} onChange={(ev) => setF({ ...f, date: ev.target.value })} aria-label="Date" />
         </Field>
         <div className="field">
           <label>Paid by</label>

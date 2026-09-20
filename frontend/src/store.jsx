@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api, clearBranch, clearToken, getBranch, getToken, setApiHandlers, setBranch, setToken } from "./lib/api";
+import { navigate } from "./lib/router";
 import { buildCatalog } from "./lib/catalog";
 import { runBusy } from "./lib/busy";
 
@@ -106,6 +107,7 @@ export function AppProvider({ children }) {
     branchRef.current = 0;
     setBranchId(0);
     setCartState(EMPTY_CART);
+    navigate("home", { replace: true }); // the next person starts at Home, not the last screen used
   }, []);
 
   useEffect(() => {

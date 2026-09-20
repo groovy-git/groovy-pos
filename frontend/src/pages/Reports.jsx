@@ -5,7 +5,7 @@ import { api } from "../lib/api";
 import { inr, istDate, monthStart, fmtDate, fmtDateTime, METHOD_LABEL, r2, plural } from "../lib/format";
 import { toCSV, downloadText } from "../lib/files";
 import TopBar from "../components/TopBar";
-import { Button, Chips, Seg, SkeletonList } from "../components/ui";
+import { Button, Chips, DateField, Seg, SkeletonList } from "../components/ui";
 
 const TYPES = [
   { value: "day_close", label: "Day close", all: true },
@@ -58,7 +58,9 @@ export default function Reports() {
         <Chips value={type} onChange={setType} options={types} />
         {type === "day_close" && (
           <>
-            <input className="input mt" type="date" max={istDate()} value={date} onChange={(e) => setDate(e.target.value)} aria-label="Date" />
+            <div className="mt">
+              <DateField max={istDate()} value={date} onChange={(e) => setDate(e.target.value)} aria-label="Date" />
+            </div>
             <EmailDayClose date={date} />
           </>
         )}
@@ -67,8 +69,8 @@ export default function Reports() {
             <Chips value={range} onChange={setRange} options={RANGES} />
             {range === "custom" && (
               <div className="grid-2">
-                <input className="input" type="date" value={custom.from} max={custom.to} onChange={(e) => setCustom({ ...custom, from: e.target.value })} aria-label="From" />
-                <input className="input" type="date" value={custom.to} min={custom.from} max={istDate()} onChange={(e) => setCustom({ ...custom, to: e.target.value })} aria-label="To" />
+                <DateField value={custom.from} max={custom.to} onChange={(e) => setCustom({ ...custom, from: e.target.value })} aria-label="From" />
+                <DateField value={custom.to} min={custom.from} max={istDate()} onChange={(e) => setCustom({ ...custom, to: e.target.value })} aria-label="To" />
               </div>
             )}
           </div>
