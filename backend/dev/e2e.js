@@ -629,15 +629,15 @@ check("savings line says 'You saved ₹X on MRP!'", pdfFile && /You saved [^<]+ 
 check("no mixed serif font in the PDF", pdfFiles().every((f) => !/Georgia/.test(f.html) && !/[^-]serif/.test(f.html)));
 // the document's name heads the page in a full-width centred band, not a block beside the letterhead
 check("title band is full width and centred", pdfFile && /text-align:center[^>]*>INVOICE</.test(pdfFile.html) && !/width:150px/.test(pdfFile.html));
-// Google's PDF converter fills table cells only, told through bgcolor, and drops a background whenever
-// the same CSS rule also sets a border — the bug that left the brown band and yellow total blank
-const styleOf = (h) => (/<style>([\s\S]*?)<\/style>/.exec(h) || ["", ""])[1];
-const ruleHasBoth = (h) => (styleOf(h).match(/[^{}]+\{[^{}]*\}/g) || []).filter((r) => /background\s*:/.test(r) && /border\s*:/.test(r));
-pdfFiles().forEach((f) => check("no rule sets background and border together (" + f.name + ")", ruleHasBoth(f.html).length === 0, ruleHasBoth(f.html)[0]));
-check("title band is a filled cell", pdfFile && /<td bgcolor="#654321"[^>]*text-align:center">INVOICE</.test(pdfFile.html));
-check("items header cells carry bgcolor and white text", pdfFile && /<th bgcolor="#654321" style="color:#ffffff;[^"]*">#<\/th>/.test(pdfFile.html));
-check("grand total row carries bgcolor", pdfFile && /<td bgcolor="#f5bf03">Grand Total<\/td><td class="v" bgcolor="#f5bf03">/.test(pdfFile.html));
-check("credit note header is filled too", pdfFiles().some((f) => /CREDIT NOTE/.test(f.html) && /<th bgcolor="#654321"[^>]*>Item returned<\/th>/.test(f.html)));
+// Google's PDF converter paints text, borders and images but never a background, so nothing may rely on
+// a fill to be readable: white text came out as near-invisible grey on the real PDF
+pdfFiles().forEach((f) => check("no white text to vanish on (" + f.name + ")", !/#ffffff|#fff\b/i.test(f.html), (/color:\s*#f{3,6}/i.exec(f.html) || [])[0]));
+check("title reads as brown text between rules", pdfFile && /border-top:2px solid #654321[^"]*color:#654321[^"]*text-align:center">INVOICE</.test(pdfFile.html));
+check("items header is brown over a brown rule", pdfFile && /\.items th\{[^}]*color:#654321;border-bottom:2px solid #654321/.test(pdfFile.html));
+// every total shares one table, which is what keeps Grand Total's divider in line with CGST/SGST
+const totTables = (h) => (h.match(/<table class="tot"/g) || []).length;
+check("totals are a single table", pdfFile && totTables(pdfFile.html) === 1 && /<tr class="grand"><td>Grand Total<\/td>/.test(pdfFile.html), totTables(pdfFile && pdfFile.html));
+check("credit note totals are one table too", pdfFiles().some((f) => /CREDIT NOTE/.test(f.html) && totTables(f.html) === 1 && /<tr class="grand"><td>Refund</.test(f.html)));
 const pdfCount = pdfFiles().length;
 const pdf2 = ok(call("saveInvoicePdf", { id: pdfSale.id }, T, 1), "save PDF again");
 check("second press: already saved, no duplicate file", pdf2.already === true && pdfFiles().length === pdfCount);
