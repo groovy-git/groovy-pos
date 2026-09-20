@@ -43,6 +43,24 @@ const PRELOAD = [
   () => import("./pages/Logs"),
 ];
 
+// logged out: only the login screen shows, so keep the address on Home — a sheet closing can
+// otherwise step back to the screen the last person had open (e.g. #/more)
+function useHomeWhenLoggedOut(loggedOut) {
+  useEffect(() => {
+    if (!loggedOut) return;
+    const fix = () => {
+      if (window.location.hash && window.location.hash !== "#/home") navigate("home", { replace: true });
+    };
+    fix();
+    window.addEventListener("hashchange", fix);
+    window.addEventListener("popstate", fix);
+    return () => {
+      window.removeEventListener("hashchange", fix);
+      window.removeEventListener("popstate", fix);
+    };
+  }, [loggedOut]);
+}
+
 function usePreloadScreens(ready) {
   useEffect(() => {
     if (!ready) return;
@@ -109,6 +127,7 @@ export default function App() {
   const { user, booting, rawCatalog, online, isManager, isAdmin, logout, settings, branchId } = useApp();
   const route = useRoute();
   usePreloadScreens(!!user && !!rawCatalog);
+  useHomeWhenLoggedOut(!user);
 
   if (!user) return (<><Login /><Toasts /><BusyOverlay /></>);
   if (booting && !rawCatalog)

@@ -178,6 +178,7 @@ export function AppProvider({ children }) {
       save("gp_user", r.data.user);
       try {
         await bootstrap();
+        navigate("home", { replace: true }); // always start on Home, whatever the last person had open
       } finally {
         setBooting(false);
       }
