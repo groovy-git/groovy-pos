@@ -102,7 +102,24 @@ function findBy_(name, key, val) {
     return null;
 }
 
+/**
+ * Next id. Rows are only ever appended with an id one higher than the last, so the last row holds the
+ * highest id — reading that one cell keeps saving a bill fast however many bills the shop has.
+ * Anything unexpected falls back to scanning the table.
+ */
 function nextId_(name) {
+    if (!REQ_CACHE_[name]) {
+        const keys = cols_(name);
+        const col = keys.indexOf("id") + 1;
+        if (col > 0) {
+            const sh = sheet_(name);
+            const last = sh.getLastRow();
+            if (last < 2) return 1; // header only
+            const v = sh.getRange(last, col).getValue();
+            const n = typeof v === "number" ? v : parseFloat(v);
+            if (n > 0) return Math.floor(n) + 1;
+        }
+    }
     const rows = rows_(name);
     let max = 0;
     for (let i = 0; i < rows.length; i++) if (rows[i].id > max) max = rows[i].id;
@@ -138,20 +155,26 @@ function ensureRows_(sh, needLast) {
     if (needLast > max) sh.insertRowsAfter(max, needLast - max + 200);
 }
 
-/** Append objects (ids must already be set). Updates the request cache. */
+/**
+ * Append objects (ids must already be set). If the table hasn't been read in this request the rows are
+ * written straight away — no need to read thousands of existing rows just to add a few.
+ */
 function appendRows_(name, objs) {
     if (!objs.length) return;
-    const t = readTable_(name);
-    const start = t.sh.getLastRow() + 1;
-    ensureRows_(t.sh, start + objs.length - 1);
-    formatTextCols_(t.sh, name, start, objs.length);
-    t.sh.getRange(start, 1, objs.length, t.keys.length).setValues(objs.map((o) => rowArray_(name, o)));
+    const cached = REQ_CACHE_[name] || null;
+    const sh = cached ? cached.sh : sheet_(name);
+    const keys = cached ? cached.keys : cols_(name);
+    const start = sh.getLastRow() + 1;
+    ensureRows_(sh, start + objs.length - 1);
+    formatTextCols_(sh, name, start, objs.length);
+    sh.getRange(start, 1, objs.length, keys.length).setValues(objs.map((o) => rowArray_(name, o)));
+    if (!cached) return; // nothing cached to keep in step; a later read picks the rows up
     objs.forEach((o, i) => {
         const copy = Object.assign({}, o, { _r: start + i });
-        t.keys.forEach((k) => {
+        keys.forEach((k) => {
             if (copy[k] === undefined) copy[k] = SCHEMA[name][k] === "n" ? 0 : "";
         });
-        t.rows.push(copy);
+        cached.rows.push(copy);
     });
 }
 

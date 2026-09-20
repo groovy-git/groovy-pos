@@ -10,9 +10,21 @@
     <meta name="apple-mobile-web-app-title" content="Groovy POS" />
     <link rel="icon" type="image/svg+xml" href="./logo.svg" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <!-- start the secure connection to the backend while the app is still drawing -->
+    <link rel="preconnect" href="https://script.google.com" />
+    <link rel="preconnect" href="https://script.googleusercontent.com" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,500;0,700;1,500&display=swap" rel="stylesheet" />
+    <!-- fonts must not hold up the first paint on a weak connection -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,500;0,700;1,500&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript
+      ><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,500;0,700;1,500&display=swap" rel="stylesheet"
+    /></noscript>
     <title>Groovy POS</title>
   </head>
   <body>

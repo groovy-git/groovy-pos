@@ -33,6 +33,10 @@ class Range {
         vals.forEach((row, i) => row.forEach((v, j) => this.sheet.write(this.r + i, this.c + j, v)));
         return this;
     }
+    getValue() {
+        const v = this.sheet.cell(this.r, this.c).v;
+        return v === undefined ? "" : v;
+    }
     setValue(v) {
         this.sheet.write(this.r, this.c, v);
         return this;

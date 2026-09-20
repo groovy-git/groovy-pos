@@ -1,8 +1,8 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Home as HomeIcon, ShoppingBag, Receipt, Boxes, Menu, Users, BarChart3, Wallet, Settings as Cog, LogOut, UserCircle, History, Package } from "lucide-react";
 import { useApp } from "./store";
 import { useRoute, navigate } from "./lib/router";
-import { Toasts, Spinner } from "./components/ui";
+import { Toasts, Spinner, SkeletonList } from "./components/ui";
 import BusyOverlay from "./components/BusyOverlay";
 import { BranchChip, BranchPicker } from "./components/Branch";
 import Login from "./pages/Login";
@@ -23,6 +23,58 @@ const UsersPage = lazy(() => import("./pages/Users"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
 const Logs = lazy(() => import("./pages/Logs"));
 const Account = lazy(() => import("./pages/Account"));
+
+// the screens are separate files so the app starts fast; fetch them quietly once Home is up,
+// otherwise the first tap on a screen waits for its file over mobile data
+const PRELOAD = [
+  () => import("./pages/Sales"),
+  () => import("./pages/Stock"),
+  () => import("./pages/More"),
+  () => import("./pages/SaleDetail"),
+  () => import("./pages/Customers"),
+  () => import("./pages/Reports"),
+  () => import("./pages/ProductForm"),
+  () => import("./pages/StockIn"),
+  () => import("./pages/Expenses"),
+  () => import("./pages/Account"),
+  () => import("./pages/Users"),
+  () => import("./pages/Settings"),
+  () => import("./pages/Transfer"),
+  () => import("./pages/Logs"),
+];
+
+function usePreloadScreens(ready) {
+  useEffect(() => {
+    if (!ready) return;
+    let i = 0;
+    let stop = false;
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 300));
+    const next = () => {
+      if (stop || i >= PRELOAD.length) return;
+      PRELOAD[i++]()
+        .catch(() => {}) // offline or a slow network: the screen loads normally when opened
+        .then(() => idle(next));
+    };
+    idle(next);
+    return () => {
+      stop = true;
+    };
+  }, [ready]);
+}
+
+// same frame as a real screen (title bar + rows) so a screen being fetched never looks blank
+function PageLoading() {
+  return (
+    <>
+      <div className="topbar">
+        <h1>&nbsp;</h1>
+      </div>
+      <div className="page">
+        <SkeletonList rows={4} height={70} />
+      </div>
+    </>
+  );
+}
 
 // who may open which page (server enforces the same rules on every action)
 const ACCESS = {
@@ -56,6 +108,7 @@ function Page({ route }) {
 export default function App() {
   const { user, booting, rawCatalog, online, isManager, isAdmin, logout, settings, branchId } = useApp();
   const route = useRoute();
+  usePreloadScreens(!!user && !!rawCatalog);
 
   if (!user) return (<><Login /><Toasts /><BusyOverlay /></>);
   if (booting && !rawCatalog)
@@ -130,13 +183,7 @@ export default function App() {
 
       <div className="main">
         {!online && <div className="offline">You're offline — you can browse, but bills can't be saved until you're back online.</div>}
-        <Suspense
-          fallback={
-            <div className="page">
-              <div className="skeleton" style={{ height: 120 }} />
-            </div>
-          }
-        >
+        <Suspense fallback={<PageLoading />}>
           {/* switching branch reloads the open screen with that branch's data */}
           <Page key={branchId} route={{ ...route, page }} />
         </Suspense>

@@ -27,10 +27,18 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png,wasm}"],
+        // the scanner engine (~900 KB) is left out on purpose: only phones without a built-in
+        // barcode reader need it, and it is cached the first time the camera is used
+        globPatterns: ["**/*.{js,css,html,svg,png}"],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: "index.html",
         runtimeCaching: [
+          {
+            // fetched the first time the camera scanner runs on a phone that needs it, then kept
+            urlPattern: /\.wasm$/,
+            handler: "CacheFirst",
+            options: { cacheName: "scanner-engine", expiration: { maxEntries: 4, maxAgeSeconds: 31536000 } },
+          },
           {
             urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/,
             handler: "CacheFirst",

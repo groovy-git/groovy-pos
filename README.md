@@ -53,7 +53,7 @@ Staff phones (installed app)  ──►  Google Apps Script (backend)  ──►
     - Setup creates all the tabs.
     - It also shows an **admin email and password**. The email is the Google account you're signed in with. Write these down.
     - After your first login, change the password straight away in **More → My account → Change password**.
-6. Optional: click **Groovy POS → Run self-tests**. You should see "All 30 tests passed".
+6. Optional: click **Groovy POS → Run self-tests**. You should see "All 35 tests passed".
 7. Deploy the backend as a web app:
     - In Apps Script, click **Deploy → New deployment**.
     - Type: **Web app**.

@@ -198,6 +198,7 @@ h3 { font-size: 16px; }
   display: grid; place-items: center; cursor: pointer; color: var(--brown); flex: none;
 }
 .icon-btn:active { background: rgba(0, 0, 0, 0.06); }
+.icon-btn:disabled { opacity: .55; cursor: progress; }
 .icon-btn.filled { background: var(--gold); color: var(--ink); }
 .icon-btn.soft { background: var(--gold-soft); }
 

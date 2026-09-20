@@ -10,7 +10,7 @@ import { beepOk } from "../lib/feedback";
 import TopBar from "../components/TopBar";
 import CameraScanner from "../components/CameraScanner";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
-import { Button, Chips, Field, MoneyInput, Seg, useConfirm } from "../components/ui";
+import { Button, Chips, Field, MoneyInput, Seg, Spinner, useConfirm } from "../components/ui";
 
 const GST = [0, 5, 12, 18, 28];
 const blankVariant = (barcode = "") => ({ id: 0, size_label: "", size_ml: "", sku: "", barcode, mrp: "", sell_price: "", cost: "", opening_stock: "", reorder_level: "3", active: 1 });
@@ -37,6 +37,7 @@ export default function ProductForm({ id }) {
     return [blankVariant(route.params.get("barcode") || "")];
   });
   const [scanFor, setScanFor] = useState(null);
+  const [gen, setGen] = useState(""); // which code is being generated: "sku-2" / "bar-0"
   const [busy, setBusy] = useState(false);
   const [imgBusy, setImgBusy] = useState(false);
   const [preview, setPreview] = useState("");
@@ -84,21 +85,30 @@ export default function ProductForm({ id }) {
     return "";
   };
 
+  // both take a second or two — show a spinner and refuse a second tap (numbers are never re-used)
   const generateSku = async (i) => {
+    if (gen) return;
+    setGen("sku-" + i);
     try {
       const r = await api("generateSku");
       setV(i, { sku: r.data.sku });
     } catch (e) {
       toast(e.message, "error");
+    } finally {
+      setGen("");
     }
   };
 
   const generate = async (i) => {
+    if (gen) return;
+    setGen("bar-" + i);
     try {
       const r = await api("generateBarcode");
       setV(i, { barcode: r.data.barcode });
     } catch (e) {
       toast(e.message, "error");
+    } finally {
+      setGen("");
     }
   };
 
@@ -218,7 +228,7 @@ export default function ProductForm({ id }) {
           <div className="row mb">
             <button
               type="button"
-              onClick={() => fileRef.current.click()}
+              onClick={() => !imgBusy && fileRef.current.click()}
               style={{ width: 88, height: 88, borderRadius: 12, border: "2px dashed var(--line)", background: "var(--bg)", overflow: "hidden", display: "grid", placeItems: "center", flex: "none", cursor: "pointer" }}
               aria-label="Add photo"
             >
@@ -327,16 +337,16 @@ export default function ProductForm({ id }) {
                   <button className="icon-btn filled" onClick={() => setScanFor(i)} aria-label="Scan barcode with camera">
                     <ScanLine size={20} />
                   </button>
-                  <button className="icon-btn soft" onClick={() => generate(i)} aria-label="Generate barcode">
-                    <Wand2 size={19} />
+                  <button className="icon-btn soft" disabled={!!gen} onClick={() => generate(i)} aria-label="Generate barcode" title="Generate a barcode for items without one">
+                    {gen === "bar-" + i ? <Spinner size={18} /> : <Wand2 size={19} />}
                   </button>
                 </div>
               </Field>
               <Field label="SKU (optional)" error={skuClash(v.sku, v.id)} hint="Your item code. If this product is also on your website, use the same SKU there — imports find items by it.">
                 <div className="row gap-s">
                   <input className="input grow" value={v.sku || ""} onChange={(e) => setV(i, { sku: e.target.value.trim() })} placeholder="e.g. SKU-0001" autoCapitalize="characters" />
-                  <button className="icon-btn soft" onClick={() => generateSku(i)} aria-label="Generate SKU" title="Generate SKU (next in the SKU-#### series)">
-                    <Hash size={19} />
+                  <button className="icon-btn soft" disabled={!!gen} onClick={() => generateSku(i)} aria-label="Generate SKU" title="Generate SKU (next in the SKU-#### series)">
+                    {gen === "sku-" + i ? <Spinner size={18} /> : <Hash size={19} />}
                   </button>
                 </div>
               </Field>

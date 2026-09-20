@@ -107,6 +107,7 @@ function trashPdf_(url) {
 /* ---------- document HTML (tables + inline styles: Google's PDF converter ignores flex/grid) ---------- */
 
 const PDF_MONTHS_ = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const PDF_LOGO_ = "data:image/png;base64,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";
 
 function pdfDate_(s) {
     const m = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?/.exec(String(s || ""));
@@ -117,6 +118,39 @@ function pdfDate_(s) {
         out += ", " + (h % 12 || 12) + ":" + m[5] + (h < 12 ? " am" : " pm");
     }
     return out;
+}
+
+const PDF_ONES_ = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve",
+    "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+const PDF_TENS_ = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+function words99_(n) {
+    if (n < 20) return PDF_ONES_[n];
+    return (PDF_TENS_[Math.floor(n / 10)] + (n % 10 ? " " + PDF_ONES_[n % 10] : "")).trim();
+}
+
+// Indian numbering: crore / lakh / thousand — "One Thousand Fifty Rupees only"
+function inrWords_(amount) {
+    const total = r2_(Math.abs(Number(amount) || 0));
+    let n = Math.floor(total);
+    const paise = Math.round((total - n) * 100);
+    if (!n && !paise) return "Zero Rupees only";
+    const parts = [];
+    const chunk = (div, label) => {
+        const v = Math.floor(n / div);
+        if (v) {
+            parts.push(words99_(v) + " " + label);
+            n -= v * div;
+        }
+    };
+    chunk(10000000, "Crore");
+    chunk(100000, "Lakh");
+    chunk(1000, "Thousand");
+    chunk(100, "Hundred");
+    if (n) parts.push(words99_(n));
+    let out = parts.join(" ") + " Rupees";
+    if (paise) out += " and " + words99_(paise) + " Paise";
+    return (Number(amount) < 0 ? "Minus " : "") + out + " only";
 }
 
 function pdfShop_(branchId) {
@@ -131,46 +165,56 @@ function pdfShop_(branchId) {
     };
 }
 
-function pdfPage_(shop, title, stamp, body) {
+/** Shared page frame: letterhead, title band, body, notes + signature. */
+function pdfPage_(shop, title, stamp, body, notes) {
     const e = escHtml_;
     return (
         '<html><head><meta charset="utf-8"><style>' +
-        "body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#1a1a1a;margin:0}" +
+        "body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#2b2520;margin:0}" +
         "table{border-collapse:collapse;width:100%}td,th{vertical-align:top}" +
-        ".items th{background:#654321;color:#ffffff;padding:6px;font-size:10px;text-align:left}" +
-        ".items td{padding:6px;border-bottom:1px solid #ebe3d9}" +
-        ".n{text-align:right;white-space:nowrap}.sub{font-size:9.5px;color:#7a716a}" +
-        ".lbl{font-size:9px;text-transform:uppercase;color:#7a716a}" +
-        ".box td{padding:6px 8px;background:#faf7f2}" +
-        ".gst td,.gst th{border:1px solid #ebe3d9;padding:3px 5px;font-size:10px;text-align:right}.gst th{background:#faf7f2}" +
-        ".tot td{padding:3px 6px}.tot td.v{text-align:right}" +
-        ".grand td{font-size:14px;font-weight:bold;color:#654321;border-top:2px solid #654321;border-bottom:2px solid #654321}" +
+        ".muted{color:#8a7f75}.small{font-size:9.5px}.b{font-weight:bold}.n{text-align:right;white-space:nowrap}" +
+        ".lbl{font-size:8.5px;letter-spacing:.6px;text-transform:uppercase;color:#8a7f75}" +
+        ".items th{background:#654321;color:#ffffff;padding:7px 6px;font-size:9.5px;letter-spacing:.3px;text-align:left}" +
+        ".items td{padding:7px 6px;border-bottom:1px solid #eee5da}" +
+        ".items tbody tr{page-break-inside:avoid}.items td.mid{vertical-align:middle}" +
+        ".box{border:1px solid #e7ded2;background:#faf7f2}" +
+        ".gst td,.gst th{border:1px solid #e7ded2;padding:4px 6px;font-size:9.5px;text-align:right}" +
+        ".gst th{background:#f3ece2;font-size:8.5px;letter-spacing:.4px;text-transform:uppercase;color:#6b6157}" +
+        ".tot td{padding:5px 8px;border-bottom:1px solid #eee5da}.tot td.v{text-align:right;white-space:nowrap}" +
+        ".grand td{background:#f5bf03;color:#2b2520;font-size:13.5px;font-weight:bold;border:0;padding:8px}" +
         "</style></head><body>" +
-        '<table style="border-bottom:4px solid #F5BF03;margin-bottom:12px"><tr>' +
-        '<td style="padding-bottom:10px"><div style="font-family:Georgia,serif;font-size:22px;font-weight:bold;color:#654321">' +
-        e(shop.name) + (shop.branch ? " · " + e(shop.branch) : "") + "</div>" +
-        (shop.tagline ? '<div style="font-style:italic;color:#654321">' + e(shop.tagline) + "</div>" : "") +
-        "<div>" + e(shop.address || "") + "</div><div>" + e([shop.phone, shop.email].filter(Boolean).join(" · ")) + "</div>" +
-        (shop.gstin ? "<div><b>GSTIN: " + e(shop.gstin) + "</b> · State: " + e(shop.state_name || "") + " (" + e(shop.state_code || "") + ")</div>" : "") +
+        // letterhead
+        '<table><tr>' +
+        '<td style="width:52px;padding-right:10px"><img src="' + PDF_LOGO_ + '" width="52" height="52" alt=""></td>' +
+        "<td>" +
+        '<div style="font-family:Georgia,serif;font-size:19px;font-weight:bold;color:#654321">' + e(shop.name) + (shop.branch ? " · " + e(shop.branch) : "") + "</div>" +
+        (shop.tagline ? '<div style="font-style:italic;color:#8a7f75">' + e(shop.tagline) + "</div>" : "") +
+        '<div class="small" style="margin-top:3px">' + e(shop.address || "") + "</div>" +
+        '<div class="small">' + e([shop.phone, shop.email].filter(Boolean).join(" · ")) + "</div>" +
+        (shop.gstin ? '<div class="small b">GSTIN: ' + e(shop.gstin) + " · State: " + e(shop.state_name || "") + " (" + e(shop.state_code || "") + ")</div>" : "") +
         "</td>" +
-        '<td style="text-align:right;padding-bottom:10px"><div style="font-family:Georgia,serif;font-size:20px;letter-spacing:2px;color:#654321">' +
-        e(title) + "</div>" + (stamp ? '<div style="color:#c62828;font-weight:bold;font-size:15px">' + e(stamp) + "</div>" : "") +
+        '<td style="width:150px;text-align:right">' +
+        '<div style="background:#654321;color:#fff;font-family:Georgia,serif;font-size:13px;letter-spacing:2px;padding:7px 10px">' + e(title) + "</div>" +
+        (stamp ? '<div style="color:#c62828;font-weight:bold;font-size:14px;margin-top:6px">' + e(stamp) + "</div>" : "") +
         "</td></tr></table>" +
+        '<div style="border-bottom:3px solid #f5bf03;margin:10px 0 12px"></div>' +
         body +
-        '<table style="margin-top:24px"><tr><td style="color:#555">' + e(shop.footer || "") +
-        "<br>This is a computer generated document.</td>" +
-        '<td style="width:200px;text-align:center;border-top:1px solid #999;padding-top:4px">For ' + e(shop.name) + "</td></tr></table>" +
+        // notes + signature
+        '<table style="margin-top:18px"><tr>' +
+        '<td class="small muted">' + (notes ? notes + "<br>" : "") + e(shop.footer || "") + "<br>This is a computer generated document." + "</td>" +
+        '<td style="width:210px;text-align:center;padding-left:16px">' +
+        '<div class="small" style="margin-bottom:34px">For ' + e(shop.name) + "</div>" +
+        '<div style="border-top:1px solid #8a7f75;padding-top:4px" class="small muted">Authorised Signatory</div>' +
+        "</td></tr></table>" +
         "</body></html>"
     );
 }
 
+/** Four label/value cells in a bordered strip. */
 function pdfMeta_(cells) {
-    // two rows of two label/value cells
     const e = escHtml_;
-    const cell = (c) => '<td style="width:50%"><div class="lbl">' + e(c[0]) + "</div>" + c[1] + "</td>";
-    return (
-        '<table class="box" style="margin-bottom:12px"><tr>' + cell(cells[0]) + cell(cells[1]) + "</tr><tr>" + cell(cells[2]) + cell(cells[3]) + "</tr></table>"
-    );
+    const cell = (c) => '<td style="width:25%;padding:7px 9px;border-right:1px solid #e7ded2"><div class="lbl">' + e(c[0]) + "</div>" + c[1] + "</td>";
+    return '<table class="box">' + "<tr>" + cells.map(cell).join("") + "</tr></table>";
 }
 
 function invoicePdfHtml_(d) {
@@ -187,50 +231,63 @@ function invoicePdfHtml_(d) {
         r.tax = r2_(r.tax + i.tax);
     });
     const rows = d.items
-        .map(
-            (i, n) =>
-                "<tr><td>" + (n + 1) + "</td><td><b>" + e(name(i)) + "</b>" + (i.brand ? '<div class="sub">' + e(i.brand) + "</div>" : "") + "</td>" +
-                (showGst ? "<td>" + e(i.hsn || "") + "</td>" : "") +
-                '<td class="n">' + qty(i) + '</td><td class="n">' + inrText_(i.mrp) + '</td><td class="n">' + inrText_(i.price) +
-                '</td><td class="n">' + inrText_(r2_(i.discount + (i.bill_disc_share || 0))) + "</td>" +
-                (showGst ? '<td class="n">' + i.gst_rate + '%</td><td class="n">' + Number(i.taxable).toFixed(2) + "</td>" : "") +
-                '<td class="n"><b>' + inrText_(i.line_total) + "</b></td></tr>",
-        )
+        .map((i, n) => {
+            const bg = n % 2 ? ' style="background:#faf7f2"' : "";
+            return "<tr" + bg + '><td class="muted">' + (n + 1) + "</td><td><b>" + e(name(i)) + "</b>" +
+                (i.brand ? '<div class="small muted">' + e(i.brand) + "</div>" : "") + "</td>" +
+                (showGst ? '<td class="small mid">' + e(i.hsn || "") + "</td>" : "") +
+                '<td class="n mid">' + qty(i) + '</td><td class="n mid muted">' + inrText_(i.mrp) + '</td><td class="n mid">' + inrText_(i.price) + "</td>" +
+                '<td class="n mid">' + (r2_(i.discount + (i.bill_disc_share || 0)) > 0 ? "-" + inrText_(r2_(i.discount + (i.bill_disc_share || 0))) : "—") + "</td>" +
+                (showGst ? '<td class="n mid">' + i.gst_rate + '%</td><td class="n mid">' + Number(i.taxable).toFixed(2) + "</td>" : "") +
+                '<td class="n mid b">' + inrText_(i.line_total) + "</td></tr>";
+        })
         .join("");
     const head =
-        "<tr><th>#</th><th>Item</th>" + (showGst ? "<th>HSN</th>" : "") +
-        '<th class="n">Qty</th><th class="n">MRP</th><th class="n">Rate</th><th class="n">Disc</th>' +
-        (showGst ? '<th class="n">GST</th><th class="n">Taxable</th>' : "") + '<th class="n">Amount</th></tr>';
+        '<tr><th style="width:22px">#</th><th>Item</th>' + (showGst ? '<th style="width:52px">HSN</th>' : "") +
+        '<th class="n" style="width:38px">Qty</th><th class="n" style="width:54px">MRP</th><th class="n" style="width:54px">Rate</th>' +
+        '<th class="n" style="width:50px">Disc</th>' +
+        (showGst ? '<th class="n" style="width:38px">GST</th><th class="n" style="width:62px">Taxable</th>' : "") +
+        '<th class="n" style="width:70px">Amount</th></tr>';
+
     const gstTable = showGst
-        ? '<div class="lbl" style="margin-bottom:3px">GST summary (prices include GST)</div><table class="gst"><tr><th>Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>Total tax</th></tr>' +
-          Object.keys(rates)
-              .map((k) => rates[k])
-              .sort((a, b) => a.rate - b.rate)
+        ? '<div class="lbl" style="margin-bottom:4px">GST summary (prices include GST)</div><table class="gst" style="width:auto">' +
+          '<tr><th>Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>Total tax</th></tr>' +
+          Object.keys(rates).map((k) => rates[k]).sort((a, b) => a.rate - b.rate)
               .map((r) => "<tr><td>" + r.rate + "%</td><td>" + r.taxable.toFixed(2) + "</td><td>" + (r.tax / 2).toFixed(2) + "</td><td>" + (r.tax - r2_(r.tax / 2)).toFixed(2) + "</td><td>" + r.tax.toFixed(2) + "</td></tr>")
-              .join("") +
-          "</table>"
+              .join("") + "</table>"
         : "";
-    const line = (l, v) => "<tr><td>" + l + '</td><td class="v">' + v + "</td></tr>";
+
+    const line = (l, v, cls) => '<tr class="' + (cls || "") + '"><td>' + l + '</td><td class="v">' + v + "</td></tr>";
     const disc = r2_(sale.item_disc + sale.bill_disc);
+    const pays = d.payments.filter((p) => p.amount > 0 && !p.return_id);
+    const paid = r2_(pays.reduce((s, p) => s + p.amount, 0));
+    const balance = r2_(sale.grand_total - paid);
+    const saved = r2_(d.items.reduce((s, i) => s + (i.mrp || i.price) * i.qty, 0) - sale.grand_total);
     const totals =
         '<table class="tot">' + line("Items total", inrText_(sale.gross)) +
         (disc > 0 ? line("Discount", "-" + inrText_(disc)) : "") +
         (showGst ? line("Taxable value", inrText_(sale.taxable)) + line("CGST", inrText_(sale.cgst)) + line("SGST", inrText_(sale.sgst)) : "") +
         (sale.round_off ? line("Round off", inrText_(sale.round_off)) : "") +
-        '<tr class="grand"><td>Grand Total</td><td class="v">' + inrText_(sale.grand_total) + "</td></tr>" +
-        d.payments.filter((p) => p.amount > 0 && !p.return_id).map((p) => line("Paid · " + (METHOD_NAME_[p.method] || e(p.method)), inrText_(p.amount))).join("") +
+        '</table><table class="tot" style="margin-top:2px"><tr class="grand"><td>Grand Total</td><td class="v">' + inrText_(sale.grand_total) + "</td></tr></table>" +
+        '<table class="tot">' +
+        pays.map((p) => line("Paid · " + (METHOD_NAME_[p.method] || e(p.method)), inrText_(p.amount))).join("") +
+        (balance > 0 ? line("<b>Balance due</b>", "<b>" + inrText_(balance) + "</b>") : balance < 0 ? line("Change given", inrText_(-balance)) : "") +
         (d.returns || []).map((r) => line("Credit note " + e(r.credit_note_no), "-" + inrText_(r.total))).join("") +
-        "</table>";
+        "</table>" +
+        (saved > 0 ? '<div style="margin-top:6px;text-align:right;color:#2e7d32;font-weight:bold">You saved ' + inrText_(saved) + "</div>" : "");
+
+    const words = '<div class="box" style="margin-top:12px;padding:7px 9px"><span class="lbl">Invoice amount in words</span><br><b>' + e(inrWords_(sale.grand_total)) + "</b></div>";
+
     const body =
         pdfMeta_([
             ["Invoice No", "<b>" + e(sale.invoice_no) + "</b>"],
-            ["Date", pdfDate_(sale.date)],
-            ["Bill To", e(sale.customer_name || "Walk-in customer") + " " + e(sale.customer_phone || "") + (sale.customer_gstin ? "<br>GSTIN: " + e(sale.customer_gstin) : "")],
+            ["Date", '<span style="white-space:nowrap">' + pdfDate_(sale.date) + "</span>"],
+            ["Bill To", e(sale.customer_name || "Walk-in customer") + (sale.customer_phone ? "<br>" + e(sale.customer_phone) : "") + (sale.customer_gstin ? "<br>GSTIN: " + e(sale.customer_gstin) : "")],
             ["Served By", e(sale.salesman_name)],
         ]) +
-        '<table class="items">' + head + rows + "</table>" +
-        '<table style="margin-top:12px"><tr><td>' + gstTable + '</td><td style="width:280px">' + totals + "</td></tr></table>";
-    return pdfPage_(shop, showGst && shop.gstin ? "TAX INVOICE" : "INVOICE", sale.status === "voided" ? "VOIDED" : "", body);
+        '<table class="items" style="margin-top:12px"><thead>' + head + "</thead><tbody>" + rows + "</tbody></table>" +
+        '<table style="margin-top:14px"><tr><td style="padding-right:16px">' + gstTable + words + '</td><td style="width:265px">' + totals + "</td></tr></table>";
+    return pdfPage_(shop, showGst && shop.gstin ? "TAX INVOICE" : "INVOICE", sale.status === "voided" ? "VOIDED" : "", body, "");
 }
 
 function creditNoteHtml_(r) {
@@ -238,28 +295,33 @@ function creditNoteHtml_(r) {
     const sale = findBy_("Sales", "id", r.sale_id) || {};
     const saleItems = indexBy_(rows_("Sale_Items").filter((i) => i.sale_id === r.sale_id), "id");
     const items = rows_("Return_Items").filter((x) => x.return_id === r.id);
-    const rows = items
+    const rows2 = items
         .map((x, n) => {
             const si = saleItems[x.sale_item_id] || {};
             const nm = (si.product_name || "Item") + (si.size && si.unit !== "ml" ? " " + si.size : "");
-            return "<tr><td>" + (n + 1) + "</td><td><b>" + e(nm) + "</b></td><td class=\"n\">" + (si.unit === "ml" ? r3_(x.qty) + " ml" : x.qty) +
-                '</td><td class="n">' + Number(x.taxable).toFixed(2) + '</td><td class="n">' + Number(x.tax).toFixed(2) + '</td><td class="n"><b>' + inrText_(x.amount) + "</b></td></tr>";
+            const bg = n % 2 ? ' style="background:#faf7f2"' : "";
+            return "<tr" + bg + '><td class="muted">' + (n + 1) + "</td><td><b>" + e(nm) + '</b></td><td class="n">' + (si.unit === "ml" ? r3_(x.qty) + " ml" : x.qty) +
+                '</td><td class="n">' + Number(x.taxable).toFixed(2) + '</td><td class="n">' + Number(x.tax).toFixed(2) + '</td><td class="n b">' + inrText_(x.amount) + "</td></tr>";
         })
         .join("");
+    const line = (l, v, cls) => '<tr class="' + (cls || "") + '"><td>' + l + '</td><td class="v">' + v + "</td></tr>";
+    const totals =
+        '<table class="tot">' + line("Taxable value", inrText_(r.taxable)) + line("GST", inrText_(r.tax)) +
+        '</table><table class="tot" style="margin-top:2px"><tr class="grand"><td>Refund</td><td class="v">' + inrText_(r.total) + "</td></tr></table>" +
+        '<table class="tot">' + line("Refunded by", e(METHOD_NAME_[r.refund_method] || r.refund_method || "")) + "</table>";
+    const words = '<div class="box" style="margin-top:12px;padding:7px 9px"><span class="lbl">Refund amount in words</span><br><b>' + e(inrWords_(r.total)) + "</b></div>";
     const body =
         pdfMeta_([
             ["Credit Note No", "<b>" + e(r.credit_note_no) + "</b>"],
-            ["Date", pdfDate_(r.at)],
-            ["Against Invoice", e(r.invoice_no) + (sale.date ? " (" + pdfDate_(String(sale.date).slice(0, 10)) + ")" : "")],
-            ["Customer", e(sale.customer_name || "Walk-in customer") + " " + e(sale.customer_phone || "")],
+            ["Date", '<span style="white-space:nowrap">' + pdfDate_(r.at) + "</span>"],
+            ["Against Invoice", e(r.invoice_no) + (sale.date ? "<br>" + pdfDate_(String(sale.date).slice(0, 10)) : "")],
+            ["Customer", e(sale.customer_name || "Walk-in customer") + (sale.customer_phone ? "<br>" + e(sale.customer_phone) : "")],
         ]) +
-        '<table class="items"><tr><th>#</th><th>Item returned</th><th class="n">Qty</th><th class="n">Taxable</th><th class="n">GST</th><th class="n">Amount</th></tr>' + rows + "</table>" +
-        '<table style="margin-top:12px"><tr><td>' + (r.reason ? '<div class="lbl">Reason</div>' + e(r.reason) : "") + '</td><td style="width:280px"><table class="tot">' +
-        '<tr><td>Taxable value</td><td class="v">' + inrText_(r.taxable) + "</td></tr>" +
-        '<tr><td>GST</td><td class="v">' + inrText_(r.tax) + "</td></tr>" +
-        '<tr class="grand"><td>Refund</td><td class="v">' + inrText_(r.total) + "</td></tr>" +
-        '<tr><td>Refunded by</td><td class="v">' + e(METHOD_NAME_[r.refund_method] || r.refund_method || "") + "</td></tr></table></td></tr></table>";
-    return pdfPage_(pdfShop_(r.branch_id), "CREDIT NOTE", "", body);
+        '<table class="items" style="margin-top:12px"><thead><tr><th style="width:22px">#</th><th>Item returned</th><th class="n" style="width:46px">Qty</th>' +
+        '<th class="n" style="width:66px">Taxable</th><th class="n" style="width:58px">GST</th><th class="n" style="width:74px">Amount</th></tr></thead><tbody>' + rows2 + "</tbody></table>" +
+        '<table style="margin-top:14px"><tr><td style="padding-right:16px">' + (r.reason ? '<div class="lbl">Reason</div>' + e(r.reason) : "") + words +
+        '</td><td style="width:265px">' + totals + "</td></tr></table>";
+    return pdfPage_(pdfShop_(r.branch_id), "CREDIT NOTE", "", body, "");
 }
 
 /* ---------- saving ---------- */
