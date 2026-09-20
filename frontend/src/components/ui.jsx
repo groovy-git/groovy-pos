@@ -101,9 +101,18 @@ export function SearchBar({ value, onChange, placeholder = "Search", onScan, aut
   useEffect(() => {
     if (!focused) return;
     const since = Date.now();
+    let idle;
     const blur = () => self.current && self.current.blur();
-    // the browser scrolls the focused field into view when the keyboard opens; that is not the user
-    const onScroll = () => Date.now() - since > 500 && blur();
+    /**
+     * Once scrolling has settled — not on the first scroll event. Closing the keyboard mid-gesture
+     * resizes the viewport while the content is still moving, and since the shell is sized in dvh
+     * and the header is sticky, that reflow makes the header flicker for the rest of the flick.
+     */
+    const onScroll = () => {
+      if (Date.now() - since <= 500) return; // the browser's own scroll-into-view on focus
+      clearTimeout(idle);
+      idle = setTimeout(blur, 150);
+    };
     const onDown = (e) => {
       const t = e.target;
       if (!t || typeof t.closest !== "function" || !t.closest(TAPPABLE)) blur();
@@ -111,6 +120,7 @@ export function SearchBar({ value, onChange, placeholder = "Search", onScan, aut
     window.addEventListener("scroll", onScroll, { passive: true });
     document.addEventListener("pointerdown", onDown, true);
     return () => {
+      clearTimeout(idle); // never fire against an input that has already lost focus or unmounted
       window.removeEventListener("scroll", onScroll);
       document.removeEventListener("pointerdown", onDown, true);
     };
