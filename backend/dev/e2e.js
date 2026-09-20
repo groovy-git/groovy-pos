@@ -343,6 +343,49 @@ check("saveProduct refuses a duplicate SKU", !dupSku.success && /SKU sku-0001 al
 ok(call("saveProduct", Object.assign({}, floraProd, { name: "Flora 30", brand_name: "Groovy Fragrances", variants: [{ id: floraVar.id, size_label: "30ml", barcode: floraVar.barcode, sell_price: 375, mrp: 400, sku: "SKU-0001-B" }] }), T, 1), "edit SKU in app");
 check("SKU edited in app", skuVar("SKU-0001-B") && skuVar("SKU-0001-B").id === floraVar.id);
 
+// website export: a row with no barcode gets its Product Id, so the size can still be scanned
+const varById = (id) => call("getCatalog", {}, T).data.variants.find((v) => v.id === id);
+const fbNew = ok(call("importCatalog", { rows: [
+    { brand: "Groovy Fragrances", product: "Real Rose Perfume", new_category: "Eau De Parfum", size_label: "30ml", size_ml: 30, sell_price: 200, mrp: 400, sku: "SKU-RR-30", barcode: "", barcode_fallback: "900101" },
+    { brand: "Groovy Fragrances", product: "Real Rose Perfume", size_label: "60ml", size_ml: 60, sell_price: 300, mrp: 600, sku: "SKU-RR-60", barcode: "", barcode_fallback: "900102" },
+] }, T, 1), "website rows without a barcode");
+check("blank barcode filled from Product Id", skuVar("SKU-RR-30") && skuVar("SKU-RR-30").barcode === "900101" && skuVar("SKU-RR-60").barcode === "900102", fbNew);
+check("fills are counted for the import summary", fbNew.barcodes_filled === 2, fbNew);
+const rr30 = skuVar("SKU-RR-30");
+// the same file again: found by SKU, nothing duplicated, no second fill counted
+const fbAgain = ok(call("importCatalog", { rows: [
+    { brand: "Groovy Fragrances", product: "Real Rose Perfume", size_label: "30ml", sell_price: 200, mrp: 400, sku: "SKU-RR-30", barcode: "", barcode_fallback: "900101" },
+] }, T, 1), "same website file again");
+check("re-upload: no duplicate, no error, nothing refilled", fbAgain.variants === 0 && fbAgain.unchanged === 1 && !fbAgain.errors.length && fbAgain.barcodes_filled === 0 && skuVar("SKU-RR-30").id === rr30.id, fbAgain);
+// found by the filled barcode alone, even when the row carries no SKU
+const fbByCode = ok(call("importCatalog", { rows: [
+    { brand: "Groovy Fragrances", product: "Real Rose Perfume", size_label: "30ml", sell_price: 210, barcode: "", barcode_fallback: "900101" },
+] }, T, 1), "row matched by the filled Product Id");
+check("filled Product Id identifies the size later", fbByCode.updated === 1 && varById(rr30.id).sell_price === 210 && call("getCatalog", {}, T).data.variants.filter((v) => v.barcode === "900101").length === 1, fbByCode);
+// a real barcode saved in the app is never replaced, and the row still updates
+ok(call("saveProduct", Object.assign({}, call("getCatalog", {}, T).data.products.find((x) => x.id === rr30.product_id), {
+    brand_name: "Groovy Fragrances",
+    variants: [{ id: rr30.id, size_label: "30ml", barcode: "8901234567890", sku: "SKU-RR-30", sell_price: 210, mrp: 400 }],
+}), T, 1), "shop scans a real barcode onto the size");
+const fbKeep = ok(call("importCatalog", { rows: [
+    { brand: "Groovy Fragrances", product: "Real Rose Perfume", size_label: "30ml", sell_price: 225, sku: "SKU-RR-30", barcode: "", barcode_fallback: "900101" },
+] }, T, 1), "website row over a real barcode");
+check("real barcode kept, row still updates, no error", !fbKeep.errors.length && varById(rr30.id).barcode === "8901234567890" && varById(rr30.id).sell_price === 225, fbKeep);
+// a Product Id that is already someone else's barcode is ignored rather than failing
+const fbTaken = ok(call("importCatalog", { rows: [
+    { brand: "Groovy Fragrances", product: "Rose Attar Mini", new_category: "Packed Attar", size_label: "3ml", sell_price: 50, sku: "SKU-RR-3", barcode: "", barcode_fallback: "8901234567890" },
+] }, T, 1), "Product Id already used as a barcode");
+check("taken Product Id ignored, size still created", !fbTaken.errors.length && fbTaken.variants === 1 && skuVar("SKU-RR-3").barcode === "" && fbTaken.barcodes_filled === 0, fbTaken);
+// two rows in one file carrying the same Product Id: the first fills, the second is left blank
+const fbDup = ok(call("importCatalog", { rows: [
+    { brand: "Groovy Fragrances", product: "Twin A", new_category: "Eau De Parfum", size_label: "10ml", sell_price: 90, sku: "SKU-TW-A", barcode: "", barcode_fallback: "900777" },
+    { brand: "Groovy Fragrances", product: "Twin B", new_category: "Eau De Parfum", size_label: "10ml", sell_price: 90, sku: "SKU-TW-B", barcode: "", barcode_fallback: "900777" },
+] }, T, 1), "repeated Product Id in one file");
+check("repeated Product Id: first fills, second blank, no error", !fbDup.errors.length && fbDup.variants === 2 && skuVar("SKU-TW-A").barcode === "900777" && skuVar("SKU-TW-B").barcode === "" && fbDup.barcodes_filled === 1, fbDup);
+// a hand-made CSV (no fallback field) behaves exactly as before
+const noFb = ok(call("importCatalog", { rows: [{ brand: "Groovy Fragrances", product: "Plain Row", new_category: "Eau De Parfum", size_label: "5ml", sell_price: 20 }] }, T, 1), "template CSV row");
+check("template CSV unaffected: size created without a barcode", noFb.variants === 1 && noFb.barcodes_filled === 0 && call("getCatalog", {}, T).data.products.some((x) => x.name === "Plain Row"), noFb);
+
 // ---- setup upgrades an older sheet that lacks a newly added trailing column ----
 const salesSh = env.ss.getSheetByName("Sales");
 const lastCol = require("vm").runInContext("Object.keys(SCHEMA.Sales).length", ctx);
@@ -584,6 +627,8 @@ check("PDF html escapes customer name", pdfFile && pdfFile.html.includes("&lt;b&
 // the savings line is worded like the receipt, and the whole page uses one sans face
 check("savings line says 'You saved ₹X on MRP!'", pdfFile && /You saved [^<]+ on MRP!/.test(pdfFile.html), pdfFile && (/You saved[^<]*/.exec(pdfFile.html) || [])[0]);
 check("no mixed serif font in the PDF", pdfFiles().every((f) => !/Georgia/.test(f.html) && !/[^-]serif/.test(f.html)));
+// the document's name heads the page in a full-width centred band, not a block beside the letterhead
+check("title band is full width and centred", pdfFile && /text-align:center[^>]*>INVOICE</.test(pdfFile.html) && !/width:150px/.test(pdfFile.html));
 const pdfCount = pdfFiles().length;
 const pdf2 = ok(call("saveInvoicePdf", { id: pdfSale.id }, T, 1), "save PDF again");
 check("second press: already saved, no duplicate file", pdf2.already === true && pdfFiles().length === pdfCount);

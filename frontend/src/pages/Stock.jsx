@@ -375,7 +375,8 @@ function ImportSheet({ open, onClose }) {
         Uploading again is safe: existing sizes (same barcode, or same brand + product + size) get their prices updated — blank cells keep the current value — and are
         never duplicated. Opening stock is only used for new sizes; use Stock In for more stock.
         <br />
-        You can also upload the product export from your website as it is — its columns are matched automatically, and SKU or barcode finds existing items.
+        You can also upload the product export from your website as it is — its columns are matched automatically, and SKU or barcode finds existing items. A row with no
+        barcode gets its Product Id as one, so the item can still be scanned; a barcode already saved here is never replaced.
       </p>
       <button className="btn secondary block" onClick={() => downloadText("groovy-products-template.csv", IMPORT_TEMPLATE)}>
         <Download size={18} /> Download template
@@ -412,6 +413,11 @@ function ImportSheet({ open, onClose }) {
           <b>
             Added {result.variants} sizes in {result.products} new products · Updated {result.updated || 0} · {result.unchanged || 0} unchanged
           </b>
+          {result.barcodes_filled > 0 && (
+            <div className="small muted mt">
+              {result.barcodes_filled} {result.barcodes_filled === 1 ? "size had" : "sizes had"} no barcode — the website Product Id was used, so {result.barcodes_filled === 1 ? "it can" : "they can"} be scanned.
+            </div>
+          )}
           {result.stock_ignored > 0 && (
             <div className="small muted mt">
               Opening stock was ignored for {result.stock_ignored} existing {result.stock_ignored === 1 ? "size" : "sizes"} — use Stock In to add stock.

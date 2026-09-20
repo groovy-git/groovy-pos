@@ -124,16 +124,18 @@ function a4Page(s, title, stamp, body) {
     body { font-family: Helvetica, Arial, sans-serif; font-size: 11px; color: #2b2520; }
     table { border-collapse: collapse; width: 100%; } td, th { vertical-align: top; }
     .muted { color: #8a7f75; } .small { font-size: 10px; } .b { font-weight: bold; }
+    .sub { font-size: 9px; color: #8a7f75; }
     .n { text-align: right; white-space: nowrap; }
     .lbl { font-size: 8.5px; letter-spacing: .6px; text-transform: uppercase; color: #8a7f75; }
-    .items th { background: #654321; color: #fff; padding: 7px 6px; font-size: 10px; font-weight: bold; letter-spacing: .3px; text-align: left; }
-    .items td { padding: 7px 6px; border-bottom: 1px solid #eee5da; }
+    /* every table on the page is the same grid: bordered cells, 10px values, small uppercase headers */
+    .items th { background: #654321; color: #fff; border: 1px solid #654321; padding: 4px 6px; font-size: 8.5px; font-weight: bold; letter-spacing: .4px; text-transform: uppercase; text-align: left; }
+    .items td { border: 1px solid #e7ded2; padding: 4px 6px; font-size: 10px; }
     .items tbody tr { page-break-inside: avoid; } .items td.mid { vertical-align: middle; }
     .box { border: 1px solid #e7ded2; background: #faf7f2; }
     .gst td, .gst th { border: 1px solid #e7ded2; padding: 4px 6px; font-size: 10px; text-align: right; }
     .gst th { background: #f3ece2; font-size: 8.5px; letter-spacing: .4px; text-transform: uppercase; color: #6b6157; }
-    .tot td { padding: 5px 8px; border-bottom: 1px solid #eee5da; } .tot td.v { text-align: right; white-space: nowrap; }
-    .grand td { background: #f5bf03; color: #2b2520; font-size: 13px; font-weight: bold; border: 0; padding: 8px; }
+    .tot td { border: 1px solid #e7ded2; padding: 4px 6px; font-size: 10px; } .tot td.v { text-align: right; white-space: nowrap; }
+    .grand td { background: #f5bf03; color: #2b2520; border: 1px solid #f5bf03; font-size: 11.5px; font-weight: bold; padding: 6px; }
   </style></head><body>
     <table><tr>
       <td style="width:52px;padding-right:10px">${LOGO_SVG}</td>
@@ -144,12 +146,11 @@ function a4Page(s, title, stamp, body) {
         <div class="small">${esc([s.phone, s.email].filter(Boolean).join(" · "))}</div>
         ${s.gstin ? `<div class="small b">GSTIN: ${esc(s.gstin)} · State: ${esc(s.state_name || "")} (${esc(s.state_code || "")})</div>` : ""}
       </td>
-      <td style="width:150px;text-align:right">
-        <div style="background:#654321;color:#fff;font-size:12px;font-weight:bold;letter-spacing:2px;padding:7px 10px">${esc(title)}</div>
-        ${stamp ? `<div style="color:#c62828;font-weight:bold;font-size:14px;margin-top:6px">${esc(stamp)}</div>` : ""}
-      </td>
     </tr></table>
     <div style="border-bottom:3px solid #f5bf03;margin:10px 0 12px"></div>
+    <!-- the document's name heads the page across its full width -->
+    <div style="background:#654321;color:#fff;font-size:12px;font-weight:bold;letter-spacing:3px;padding:6px;text-align:center;margin-bottom:12px">${esc(title)}</div>
+    ${stamp ? `<div style="color:#c62828;font-weight:bold;font-size:14px;text-align:center;margin:-6px 0 12px">${esc(stamp)}</div>` : ""}
     ${body}
     <table style="margin-top:18px"><tr>
       <td class="small muted">${esc(s.receipt_footer || "")}<br>This is a computer generated document.</td>
@@ -164,7 +165,7 @@ function a4Page(s, title, stamp, body) {
 // four label/value cells in a bordered strip
 const a4Meta = (cells) =>
   `<table class="box"><tr>${cells
-    .map((c) => `<td style="width:25%;padding:7px 9px;border-right:1px solid #e7ded2"><div class="lbl">${esc(c[0])}</div>${c[1]}</td>`)
+    .map((c) => `<td style="width:25%;padding:4px 6px;border:1px solid #e7ded2;font-size:10px"><div class="lbl">${esc(c[0])}</div>${c[1]}</td>`)
     .join("")}</tr></table>`;
 
 export function a4InvoiceHtml(d, s) {
@@ -177,7 +178,7 @@ export function a4InvoiceHtml(d, s) {
     .map((i, n) => {
       const disc = r2(i.discount + (i.bill_disc_share || 0));
       return `<tr${n % 2 ? ' style="background:#faf7f2"' : ""}><td class="muted">${n + 1}</td>
-      <td><b>${esc(itemName(i))}</b>${i.brand ? `<div class="small muted">${esc(i.brand)}</div>` : ""}</td>
+      <td><b>${esc(itemName(i))}</b>${i.brand ? `<div class="sub">${esc(i.brand)}</div>` : ""}</td>
       ${showGst ? `<td class="small mid">${esc(i.hsn || "")}</td>` : ""}
       <td class="n mid">${qtyLabel(i.qty, i.unit)}</td><td class="n mid muted">${money(i.mrp, i)}</td><td class="n mid">${money(i.price, i)}</td>
       <td class="n mid">${disc > 0 ? "-" + inr(disc) : "—"}</td>

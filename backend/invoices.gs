@@ -150,15 +150,17 @@ function pdfPage_(shop, title, stamp, body, notes) {
         "body{font-family:Helvetica,Arial,sans-serif;font-size:11px;color:#2b2520;margin:0}" +
         "table{border-collapse:collapse;width:100%}td,th{vertical-align:top}" +
         ".muted{color:#8a7f75}.small{font-size:10px}.b{font-weight:bold}.n{text-align:right;white-space:nowrap}" +
+        ".sub{font-size:9px;color:#8a7f75}" +
         ".lbl{font-size:8.5px;letter-spacing:.6px;text-transform:uppercase;color:#8a7f75}" +
-        ".items th{background:#654321;color:#ffffff;padding:7px 6px;font-size:10px;font-weight:bold;letter-spacing:.3px;text-align:left}" +
-        ".items td{padding:7px 6px;border-bottom:1px solid #eee5da}" +
+        // every table on the page is the same grid: bordered cells, 10px values, small uppercase headers
+        ".items th{background:#654321;color:#ffffff;border:1px solid #654321;padding:4px 6px;font-size:8.5px;font-weight:bold;letter-spacing:.4px;text-transform:uppercase;text-align:left}" +
+        ".items td{border:1px solid #e7ded2;padding:4px 6px;font-size:10px}" +
         ".items tbody tr{page-break-inside:avoid}.items td.mid{vertical-align:middle}" +
         ".box{border:1px solid #e7ded2;background:#faf7f2}" +
         ".gst td,.gst th{border:1px solid #e7ded2;padding:4px 6px;font-size:10px;text-align:right}" +
         ".gst th{background:#f3ece2;font-size:8.5px;letter-spacing:.4px;text-transform:uppercase;color:#6b6157}" +
-        ".tot td{padding:5px 8px;border-bottom:1px solid #eee5da}.tot td.v{text-align:right;white-space:nowrap}" +
-        ".grand td{background:#f5bf03;color:#2b2520;font-size:13px;font-weight:bold;border:0;padding:8px}" +
+        ".tot td{border:1px solid #e7ded2;padding:4px 6px;font-size:10px}.tot td.v{text-align:right;white-space:nowrap}" +
+        ".grand td{background:#f5bf03;color:#2b2520;border:1px solid #f5bf03;font-size:11.5px;font-weight:bold;padding:6px}" +
         "</style></head><body>" +
         // letterhead
         '<table><tr>' +
@@ -169,12 +171,11 @@ function pdfPage_(shop, title, stamp, body, notes) {
         '<div class="small" style="margin-top:3px">' + e(shop.address || "") + "</div>" +
         '<div class="small">' + e([shop.phone, shop.email].filter(Boolean).join(" · ")) + "</div>" +
         (shop.gstin ? '<div class="small b">GSTIN: ' + e(shop.gstin) + " · State: " + e(shop.state_name || "") + " (" + e(shop.state_code || "") + ")</div>" : "") +
-        "</td>" +
-        '<td style="width:150px;text-align:right">' +
-        '<div style="background:#654321;color:#fff;font-size:12px;font-weight:bold;letter-spacing:2px;padding:7px 10px">' + e(title) + "</div>" +
-        (stamp ? '<div style="color:#c62828;font-weight:bold;font-size:14px;margin-top:6px">' + e(stamp) + "</div>" : "") +
         "</td></tr></table>" +
         '<div style="border-bottom:3px solid #f5bf03;margin:10px 0 12px"></div>' +
+        // the document's name heads the page across its full width
+        '<div style="background:#654321;color:#fff;font-size:12px;font-weight:bold;letter-spacing:3px;padding:6px;text-align:center;margin-bottom:12px">' + e(title) + "</div>" +
+        (stamp ? '<div style="color:#c62828;font-weight:bold;font-size:14px;text-align:center;margin:-6px 0 12px">' + e(stamp) + "</div>" : "") +
         body +
         // notes + signature
         '<table style="margin-top:18px"><tr>' +
@@ -190,7 +191,7 @@ function pdfPage_(shop, title, stamp, body, notes) {
 /** Four label/value cells in a bordered strip. */
 function pdfMeta_(cells) {
     const e = escHtml_;
-    const cell = (c) => '<td style="width:25%;padding:7px 9px;border-right:1px solid #e7ded2"><div class="lbl">' + e(c[0]) + "</div>" + c[1] + "</td>";
+    const cell = (c) => '<td style="width:25%;padding:4px 6px;border:1px solid #e7ded2;font-size:10px"><div class="lbl">' + e(c[0]) + "</div>" + c[1] + "</td>";
     return '<table class="box">' + "<tr>" + cells.map(cell).join("") + "</tr></table>";
 }
 
@@ -211,7 +212,7 @@ function invoicePdfHtml_(d) {
         .map((i, n) => {
             const bg = n % 2 ? ' style="background:#faf7f2"' : "";
             return "<tr" + bg + '><td class="muted">' + (n + 1) + "</td><td><b>" + e(name(i)) + "</b>" +
-                (i.brand ? '<div class="small muted">' + e(i.brand) + "</div>" : "") + "</td>" +
+                (i.brand ? '<div class="sub">' + e(i.brand) + "</div>" : "") + "</td>" +
                 (showGst ? '<td class="small mid">' + e(i.hsn || "") + "</td>" : "") +
                 '<td class="n mid">' + qty(i) + '</td><td class="n mid muted">' + inrText_(i.mrp) + '</td><td class="n mid">' + inrText_(i.price) + "</td>" +
                 '<td class="n mid">' + (r2_(i.discount + (i.bill_disc_share || 0)) > 0 ? "-" + inrText_(r2_(i.discount + (i.bill_disc_share || 0))) : "—") + "</td>" +
@@ -293,7 +294,7 @@ function creditNoteHtml_(r) {
         ]) +
         '<table class="items" style="margin-top:12px"><thead><tr><th style="width:22px">#</th><th>Item returned</th><th class="n" style="width:46px">Qty</th>' +
         '<th class="n" style="width:66px">Taxable</th><th class="n" style="width:58px">GST</th><th class="n" style="width:74px">Amount</th></tr></thead><tbody>' + rows2 + "</tbody></table>" +
-        '<table style="margin-top:14px"><tr><td style="padding-right:16px">' + (r.reason ? '<div class="lbl">Reason</div>' + e(r.reason) : "") +
+        '<table style="margin-top:14px"><tr><td style="padding-right:16px">' + (r.reason ? '<div class="lbl">Reason</div><div class="small">' + e(r.reason) + "</div>" : "") +
         '</td><td style="width:265px">' + totals + "</td></tr></table>";
     return pdfPage_(pdfShop_(r.branch_id), "CREDIT NOTE", "", body, "");
 }

@@ -428,6 +428,7 @@ function apiImportCatalog_(p, ctx) {
         let updated = 0;
         let unchanged = 0;
         let stockIgnored = 0;
+        let barcodesFilled = 0; // blank barcodes filled from the website's Product Id
         let pid = nextId_("Products");
         let vid = nextId_("Variants");
         let mid = nextId_("Stock_Movements");
@@ -456,6 +457,10 @@ function apiImportCatalog_(p, ctx) {
                 if (!prodName) fail_("Product name missing");
                 const key = prodKey(str_(r.brand), prodName);
                 const code = normBarcode_(r.barcode);
+                // the website export sends its Product Id as a fallback: it fills a blank barcode so the
+                // size can be scanned, but never replaces one and never makes the upload fail
+                const fb = code ? "" : normBarcode_(r.barcode_fallback);
+                const freeCode = (c) => !!c && !varByCode[c];
                 let prod = prodByKey[key] || null;
                 let match = null;
 
@@ -478,6 +483,16 @@ function apiImportCatalog_(p, ctx) {
                     match = bySku;
                     prod = prodById[bySku.product_id] || prod;
                 }
+                // 2b. a Product Id written as a barcode by an earlier upload identifies the size again —
+                // but only if it really is this row's item; anything else is ignored, never an error
+                if (!match && fb && varByCode[fb]) {
+                    const v1 = varByCode[fb];
+                    const p1 = prodById[v1.product_id];
+                    if (p1 && (prodKey(brandOf(p1), p1.name) === key || (skuKey && String(v1.sku || "").toUpperCase() === skuKey))) {
+                        prod = p1;
+                        match = v1;
+                    }
+                }
                 // 3. same brand + product → same size label (a loose product has one size)
                 if (!match && prod) {
                     const sizes = varsByProd[prod.id] || [];
@@ -495,7 +510,7 @@ function apiImportCatalog_(p, ctx) {
                         {
                             size_label: match.size_label,
                             size_ml: blank(r.size_ml) ? match.size_ml : r.size_ml,
-                            barcode: code || match.barcode,
+                            barcode: code || match.barcode || (freeCode(fb) ? fb : ""),
                             mrp: blank(r.mrp) ? match.mrp : r.mrp,
                             sell_price: blank(r.sell_price) ? match.sell_price : r.sell_price,
                             reorder_level: blank(r.reorder_level) ? match.reorder_level : r.reorder_level,
@@ -521,6 +536,7 @@ function apiImportCatalog_(p, ctx) {
                     if (varDiff) {
                         Object.assign(match, nextVar, { updated_at: now });
                         mark(changedVars, match);
+                        if (fb && match.barcode === fb) barcodesFilled++;
                         if (v.barcode) varByCode[v.barcode] = match;
                         if (match.sku) varBySku[String(match.sku).toUpperCase()] = match;
                     }
@@ -538,7 +554,7 @@ function apiImportCatalog_(p, ctx) {
                 const saleType = prod ? prod.sale_type : str_(r.sale_type).toLowerCase() === "loose" ? "loose" : "packed";
                 const v = cleanVariant_(
                     {
-                        size_label: r.size_label, size_ml: r.size_ml, barcode: r.barcode, mrp: r.mrp,
+                        size_label: r.size_label, size_ml: r.size_ml, barcode: code || (freeCode(fb) ? fb : ""), mrp: r.mrp,
                         sell_price: r.sell_price, reorder_level: r.reorder_level, opening_stock: r.opening_stock, cost: r.cost,
                     },
                     saleType,
@@ -565,6 +581,7 @@ function apiImportCatalog_(p, ctx) {
                 };
                 newVars.push(row);
                 (varsByProd[prod.id] = varsByProd[prod.id] || []).push(row);
+                if (fb && row.barcode === fb) barcodesFilled++;
                 if (v.barcode) varByCode[v.barcode] = row;
                 if (row.sku) varBySku[row.sku.toUpperCase()] = row;
                 if (v.opening_stock > 0)
@@ -593,7 +610,7 @@ function apiImportCatalog_(p, ctx) {
         log_(ctx, "IMPORT", "Products", "", summary);
         return {
             message: summary,
-            data: { products: newProds.length, variants: newVars.length, updated, unchanged, stock_ignored: stockIgnored, errors },
+            data: { products: newProds.length, variants: newVars.length, updated, unchanged, stock_ignored: stockIgnored, barcodes_filled: barcodesFilled, errors },
         };
     });
 }

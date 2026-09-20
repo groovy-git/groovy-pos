@@ -113,6 +113,7 @@ export function fromWebsiteExport(rows) {
       brand: r.brand,
       sku: r.sku,
       barcode: r.barcode,
+      barcode_fallback: r.product_id, // a row with no barcode becomes scannable by its website Product Id
       size_label: ml ? ml[1] + "ml" : size,
       size_ml: ml ? ml[1] : "",
       sell_price: r.sale_price,
