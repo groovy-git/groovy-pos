@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trash2, PauseCircle, Tag } from "lucide-react";
+import { Trash2, PauseCircle, Tag, Plus } from "lucide-react";
 import { useApp } from "../../store";
 import { api } from "../../lib/api";
 import { runBusy } from "../../lib/busy";
@@ -52,6 +52,11 @@ export default function CartSheet({ open, onClose, preview, onCheckout, onHeld }
       }
       footer={
         <>
+          {/* the way back to the products. Without it the only route out is the ✕ beside the bin,
+              which reads as throwing the bill away rather than going back to add more. */}
+          <button className="btn secondary block mb" onClick={onClose}>
+            <Plus size={18} /> Add more items
+          </button>
           <div className="kv">
             <span className="k">Items total</span>
             <span className="money">{inr(preview.gross)}</span>
