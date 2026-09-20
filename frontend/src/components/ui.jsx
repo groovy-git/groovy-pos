@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Search, ScanLine, Minus, Plus, PackageOpen, ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import { useBackClose } from "../hooks/useBackClose";
@@ -77,14 +77,56 @@ export function SkeletonList({ rows = 5, height = 62 }) {
   );
 }
 
+// things a tap is meant to act on — tapping any of these leaves the keyboard alone
+const TAPPABLE = "button, a, input, select, textarea, label, [role=button]";
+
 export function SearchBar({ value, onChange, placeholder = "Search", onScan, autoFocus, inputRef }) {
+  const self = useRef(null);
+  const [focused, setFocused] = useState(false);
+  // one ref feeding both: the caller's (Sell compares the scan target against it) and our own
+  const setRef = useCallback(
+    (el) => {
+      self.current = el;
+      if (inputRef) inputRef.current = el;
+    },
+    [inputRef],
+  );
+
+  /**
+   * On a phone the keyboard hides half the screen and the only way to close it is to tap something,
+   * which then does whatever that something does. So while a search box has focus: scrolling or
+   * tapping an empty area puts the keyboard away. Taps on real controls are left completely alone —
+   * on Sell, search-then-tap-to-add is the billing flow and must stay one tap.
+   */
+  useEffect(() => {
+    if (!focused) return;
+    const since = Date.now();
+    const blur = () => self.current && self.current.blur();
+    // the browser scrolls the focused field into view when the keyboard opens; that is not the user
+    const onScroll = () => Date.now() - since > 500 && blur();
+    const onDown = (e) => {
+      const t = e.target;
+      if (!t || typeof t.closest !== "function" || !t.closest(TAPPABLE)) blur();
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    document.addEventListener("pointerdown", onDown, true);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      document.removeEventListener("pointerdown", onDown, true);
+    };
+  }, [focused]);
+
   return (
     <div className="search">
       <Search size={19} color="var(--muted)" />
       <input
-        ref={inputRef}
+        ref={setRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        // a scanner's Enter never reaches here: useBarcodeScanner stops it in the capture phase
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
         placeholder={placeholder}
         autoFocus={autoFocus}
         enterKeyHint="search"
