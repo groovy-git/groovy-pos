@@ -152,7 +152,11 @@ function Products() {
         </button>
       )}
       <CameraScanner open={scan} onClose={() => setScan(false)} onCode={onCode} continuous={false} title="Scan to find product" />
-      <ItemSheet item={open} onClose={() => setOpen(null)} />
+      {/* mounted only while a product is open, and keyed by it, so every opening starts clean. Kept
+          mounted, its state outlived the sheet: close it with the outer ✕ while Adjust stock was open
+          and the next product opened with Adjust already open underneath it, its field grabbing the
+          keyboard, and the Adjust button doing nothing because it was already "on". */}
+      {open && <ItemSheet key={open.id} item={open} onClose={() => setOpen(null)} />}
       <ImportSheet open={importOpen} onClose={() => setImportOpen(false)} />
       {confirmNode}
     </>
@@ -164,10 +168,6 @@ function ItemSheet({ item, onClose }) {
   const [adjust, setAdjust] = useState(false);
   const [moves, setMoves] = useState(null);
   const live = item ? catalog.byVariant.get(item.id) || item : null;
-
-  useEffect(() => {
-    setMoves(null);
-  }, [item]);
 
   if (!item) return null;
   const loadMoves = async () => {

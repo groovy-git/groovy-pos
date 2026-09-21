@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Trash2, PauseCircle, Tag, Plus } from "lucide-react";
 import { useApp } from "../../store";
 import { api } from "../../lib/api";
@@ -11,6 +11,11 @@ export default function CartSheet({ open, onClose, preview, onCheckout, onHeld }
   const { cart, setCart, clearCart, catalog, settings, toast, role } = useApp();
   const [discFor, setDiscFor] = useState(null);
   const [holding, setHolding] = useState(false);
+  // this sheet stays mounted between openings, so an item's discount field left open would come back
+  // with the bill — autofocused, keyboard and all. Nothing renders while closed, so this is unseen.
+  useEffect(() => {
+    if (!open) setDiscFor(null);
+  }, [open]);
   const [confirm, confirmNode] = useConfirm();
   const allowNeg = settings.allow_negative_stock === "yes";
 
