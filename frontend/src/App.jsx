@@ -1,28 +1,30 @@
-import { lazy, Suspense, useEffect } from "react";
+import { Component, Suspense, useEffect } from "react";
 import { Home as HomeIcon, ShoppingBag, Receipt, Boxes, Menu, Users, BarChart3, Wallet, Settings as Cog, LogOut, UserCircle, History, Package } from "lucide-react";
 import { useApp } from "./store";
 import { useRoute, navigate } from "./lib/router";
-import { Toasts, Spinner, SkeletonList } from "./components/ui";
+import { Toasts, Spinner, SkeletonList, Empty } from "./components/ui";
+import TopBar from "./components/TopBar";
 import BusyOverlay from "./components/BusyOverlay";
+import { lazyScreen } from "./lib/lazyScreen";
 import { BranchChip, BranchPicker } from "./components/Branch";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
 import Sell from "./pages/Sell";
 
-const Sales = lazy(() => import("./pages/Sales"));
-const SaleDetail = lazy(() => import("./pages/SaleDetail"));
-const Stock = lazy(() => import("./pages/Stock"));
-const ProductForm = lazy(() => import("./pages/ProductForm"));
-const StockIn = lazy(() => import("./pages/StockIn"));
-const Transfer = lazy(() => import("./pages/Transfer"));
-const Customers = lazy(() => import("./pages/Customers"));
-const Expenses = lazy(() => import("./pages/Expenses"));
-const Reports = lazy(() => import("./pages/Reports"));
-const More = lazy(() => import("./pages/More"));
-const UsersPage = lazy(() => import("./pages/Users"));
-const SettingsPage = lazy(() => import("./pages/Settings"));
-const Logs = lazy(() => import("./pages/Logs"));
-const Account = lazy(() => import("./pages/Account"));
+const Sales = lazyScreen(() => import("./pages/Sales"));
+const SaleDetail = lazyScreen(() => import("./pages/SaleDetail"));
+const Stock = lazyScreen(() => import("./pages/Stock"));
+const ProductForm = lazyScreen(() => import("./pages/ProductForm"));
+const StockIn = lazyScreen(() => import("./pages/StockIn"));
+const Transfer = lazyScreen(() => import("./pages/Transfer"));
+const Customers = lazyScreen(() => import("./pages/Customers"));
+const Expenses = lazyScreen(() => import("./pages/Expenses"));
+const Reports = lazyScreen(() => import("./pages/Reports"));
+const More = lazyScreen(() => import("./pages/More"));
+const UsersPage = lazyScreen(() => import("./pages/Users"));
+const SettingsPage = lazyScreen(() => import("./pages/Settings"));
+const Logs = lazyScreen(() => import("./pages/Logs"));
+const Account = lazyScreen(() => import("./pages/Account"));
 
 // the screens are separate files so the app starts fast; fetch them quietly once Home is up,
 // otherwise the first tap on a screen waits for its file over mobile data
@@ -92,6 +94,33 @@ function PageLoading() {
       </div>
     </>
   );
+}
+
+// a screen that cannot open (its file failed to load even after a reload, or it crashed) shows this
+// instead of taking the whole app down to a blank page; the top bar and tabs stay usable
+class ScreenGuard extends Component {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(err) {
+    console.error(err);
+  }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div data-screen-error>
+        <TopBar title="Couldn't open" />
+        <div className="page">
+          <Empty
+            title="This screen couldn't open"
+            text="Check your internet, then tap Reload."
+            action={<button className="btn" onClick={() => window.location.reload()}>Reload</button>}
+          />
+        </div>
+      </div>
+    );
+  }
 }
 
 // who may open which page (server enforces the same rules on every action)
@@ -202,10 +231,14 @@ export default function App() {
 
       <div className="main">
         {!online && <div className="offline">You're offline — you can browse, but bills can't be saved until you're back online.</div>}
-        <Suspense fallback={<PageLoading />}>
-          {/* switching branch reloads the open screen with that branch's data */}
-          <Page key={branchId} route={{ ...route, page }} />
-        </Suspense>
+        {/* keyed by page, so moving to another tab clears an error (every page is its own screen
+            component already, so this remounts nothing that wasn't remounting before) */}
+        <ScreenGuard key={page}>
+          <Suspense fallback={<PageLoading />}>
+            {/* switching branch reloads the open screen with that branch's data */}
+            <Page key={branchId} route={{ ...route, page }} />
+          </Suspense>
+        </ScreenGuard>
       </div>
 
       <nav className="bottomnav" aria-label="Main">
