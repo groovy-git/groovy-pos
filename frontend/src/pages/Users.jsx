@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, UserCog } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { useCachedFetch } from "../lib/cached";
 import { runBusy } from "../lib/busy";
 import { ROLE_LABEL } from "../lib/format";
 import TopBar from "../components/TopBar";
@@ -12,19 +13,19 @@ const ROLE_ORDER = { admin: 0, manager: 1, salesman: 2 };
 export default function UsersPage() {
   const { toast, user, setSellers, branches, multiBranch } = useApp();
   const branchName = (id) => (branches.find((b) => b.id === id) || {}).name || "";
-  const [list, setList] = useState(null);
   const [edit, setEdit] = useState(null);
 
-  const load = () =>
-    api("listUsers")
-      .then((r) => {
-        setList(r.data);
-        setSellers(r.data.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name, role: u.role })));
-      })
-      .catch((e) => toast(e.message, "error"));
+  // the staff list as it was last time, then refreshed
+  const { data: list, loading, reload: load } = useCachedFetch(
+    "gp_users",
+    () => api("listUsers").then((r) => r.data),
+    [],
+    (e) => toast(e.message, "error"),
+  );
+  // the "sold by" picker elsewhere in the app reads this
   useEffect(() => {
-    load();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (list) setSellers(list.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name, role: u.role })));
+  }, [list, setSellers]);
 
   // active first, then admins, managers, salesmen, then by name. An unknown role sorts last rather
   // than breaking the page. The copy is because sort() would otherwise mutate state in place.
@@ -43,7 +44,7 @@ export default function UsersPage() {
 
   return (
     <>
-      <TopBar title="Staff" back="more" />
+      <TopBar title="Staff" back="more" right={loading && list ? <span className="tiny muted">updating…</span> : null} />
       <div className="page">
         <p className="small muted" style={{ marginTop: 0 }}>
           Everyone can sell. Managers also handle stock, returns, expenses and reports. Only admins manage staff and settings.

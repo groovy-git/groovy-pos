@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Receipt, ChevronRight } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { useCachedFetch } from "../lib/cached";
 import { navigate } from "../lib/router";
 import { inr, istDate, monthStart, fmtTime, relDay, METHOD_LABEL } from "../lib/format";
 import TopBar from "../components/TopBar";
@@ -27,7 +28,6 @@ export default function Sales() {
   const saved = JSON.parse(sessionStorage.getItem("gp_sales_filter") || "null") || { preset: "today", from: istDate(), to: istDate(), seller: "" };
   const [f, setF] = useState(saved);
   const [q, setQ] = useState("");
-  const [data, setData] = useState(null);
 
   const setFilter = (patch) =>
     setF((x) => {
@@ -38,19 +38,13 @@ export default function Sales() {
 
   const [from, to] = f.preset === "custom" ? [f.from, f.to] : PRESETS.find((p) => p.value === f.preset).range();
 
-  useEffect(() => {
-    let live = true;
-    setData(null);
-    api("listSales", { from, to, salesman_id: f.seller || undefined })
-      .then((r) => live && setData(r.data))
-      .catch((e) => {
-        toast(e.message, "error");
-        live && setData({ sales: [], summary: { bills: 0, net: 0 } });
-      });
-    return () => {
-      live = false;
-    };
-  }, [from, to, f.seller]); // eslint-disable-line react-hooks/exhaustive-deps
+  // the same range and salesman as last time paint at once, then refresh underneath
+  const { data, loading } = useCachedFetch(
+    `gp_sales_${from}_${to}_${f.seller || "all"}`,
+    () => api("listSales", { from, to, salesman_id: f.seller || undefined }).then((r) => r.data),
+    [from, to, f.seller],
+    (e) => toast(e.message, "error"),
+  );
 
   const list = useMemo(() => {
     if (!data) return [];
@@ -70,7 +64,7 @@ export default function Sales() {
 
   return (
     <>
-      <TopBar title={isManager ? "Sales" : "My Sales"} />
+      <TopBar title={isManager ? "Sales" : "My Sales"} right={loading && data ? <span className="tiny muted">updating…</span> : null} />
       <div className="page">
         <Chips options={PRESETS} value={f.preset} onChange={(p) => setFilter({ preset: p })} />
         {f.preset === "custom" && (

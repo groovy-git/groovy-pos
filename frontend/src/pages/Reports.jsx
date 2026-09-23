@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Download, Trophy, Mail } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { useCachedFetch } from "../lib/cached";
 import { inr, istDate, monthStart, fmtDate, fmtDateTime, METHOD_LABEL, r2, plural } from "../lib/format";
 import { toCSV, downloadText } from "../lib/files";
 import TopBar from "../components/TopBar";
@@ -33,27 +34,21 @@ export default function Reports() {
   const [custom, setCustom] = useState({ from: monthStart(), to: istDate() });
   const [date, setDate] = useState(istDate());
   const [group, setGroup] = useState("variant");
-  const [data, setData] = useState(null);
   const [from, to] = range === "custom" ? [custom.from, custom.to] : RANGES.find((x) => x.value === range).r();
 
-  useEffect(() => {
-    let live = true;
-    setData(null);
-    api("report", { type, from, to, date, group })
-      .then((r) => live && setData({ type, d: r.data }))
-      .catch((e) => {
-        toast(e.message, "error");
-        live && setData({ type, error: true });
-      });
-    return () => {
-      live = false;
-    };
-  }, [type, from, to, date, group]); // eslint-disable-line react-hooks/exhaustive-deps
+  // the same report with the same dates paints from last time, then refreshes
+  const { data: report, loading } = useCachedFetch(
+    `gp_report_${type}_${from}_${to}_${date}_${group}`,
+    () => api("report", { type, from, to, date, group }).then((r) => ({ type, d: r.data })),
+    [type, from, to, date, group],
+    (e) => toast(e.message, "error"),
+  );
+  const data = report;
 
   const needsRange = !["day_close", "stock_valuation"].includes(type);
   return (
     <>
-      <TopBar title="Reports" back="more" />
+      <TopBar title="Reports" back="more" right={loading && data ? <span className="tiny muted">updating…</span> : null} />
       <div className="page">
         <Chips value={type} onChange={setType} options={types} />
         {type === "day_close" && (

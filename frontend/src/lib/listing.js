@@ -1,8 +1,14 @@
 // Helpers that keep long product lists usable once a shop has thousands of items.
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/** How many rows to draw at a time. A phone screen holds about eight. */
-export const PAGE = 60;
+/**
+ * How many rows to draw at a time. A phone screen holds about eight.
+ *
+ * Each row carries a product picture, and drawing sixty of them set sixty downloads going — on a
+ * weak connection that saturated the line for a minute and starved everything else. Rows are added
+ * as the list is scrolled instead.
+ */
+export const PAGE = 24;
 
 // searching on one or two letters matches half the shop and costs a full pass for nothing
 export const MIN_SEARCH = 3;
@@ -38,7 +44,9 @@ export function useMoreOnScroll(enabled, onMore) {
   useEffect(() => {
     const el = ref.current;
     if (!enabled || !el || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver((entries) => entries[0] && entries[0].isIntersecting && cb.current(), { rootMargin: "400px" });
+    // 150px of warning: enough to have the next rows ready, not so much that five screens of
+    // product pictures start downloading before anyone scrolls
+    const io = new IntersectionObserver((entries) => entries[0] && entries[0].isIntersecting && cb.current(), { rootMargin: "150px" });
     io.observe(el);
     return () => io.disconnect();
   }, [enabled]);

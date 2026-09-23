@@ -3,7 +3,7 @@ import { ChevronRight, Clock, SearchX } from "lucide-react";
 import { useApp } from "../store";
 import TopBar from "../components/TopBar";
 import CameraScanner from "../components/CameraScanner";
-import { Chips, Empty, SearchBar } from "../components/ui";
+import { Chips, Empty, LazyImg, SearchBar } from "../components/ui";
 import { NeedBranch } from "../components/Branch";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
 import { searchItems, lookupBarcode, imageUrl } from "../lib/catalog";
@@ -189,11 +189,11 @@ export default function Sell() {
 }
 
 function ProductCard({ item, inCart, onTap }) {
-  const url = imageUrl(item.image, 300);
+  const url = imageUrl(item.image, 200); // same size the lists ask for, so it is already cached
   const out = item.stock <= 0;
   return (
     <button className={"pcard" + (inCart ? " in-cart" : "") + (out ? " out" : "")} onClick={onTap}>
-      <div className="thumb">{url ? <img src={url} alt="" loading="lazy" /> : <div className="placeholder-mono">{initials(item.brand || item.name)}</div>}</div>
+      <div className="thumb">{url ? <LazyImg src={url} /> : <div className="placeholder-mono">{initials(item.brand || item.name)}</div>}</div>
       {inCart > 0 && <span className="qty-badge">{item.unit === "ml" ? `${inCart}ml` : `×${inCart}`}</span>}
       <div className="body">
         {item.brand && <div className="brand-label ellipsis">{item.brand}</div>}

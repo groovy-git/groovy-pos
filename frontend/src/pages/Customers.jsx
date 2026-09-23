@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Users, Phone, MessageCircle, Plus, Pencil } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { useCachedFetch } from "../lib/cached";
 import { runBusy } from "../lib/busy";
 import { navigate } from "../lib/router";
 import { inr, relDay, fmtDateTime } from "../lib/format";
@@ -11,29 +12,29 @@ import { STATUS } from "./Sales";
 
 export default function Customers() {
   const { toast } = useApp();
+  const [typed, setTyped] = useState("");
   const [q, setQ] = useState("");
-  const [list, setList] = useState(null);
   const [open, setOpen] = useState(null);
   const [edit, setEdit] = useState(null);
 
-  const load = (query) =>
-    api("listCustomers", { q: query })
-      .then((r) => setList(r.data))
-      .catch((e) => {
-        toast(e.message, "error");
-        setList([]);
-      });
-
+  // ask only once typing stops, and keep the previous list on screen meanwhile
   useEffect(() => {
-    const t = setTimeout(() => load(q), q ? 350 : 0);
+    const t = setTimeout(() => setQ(typed), typed ? 350 : 0);
     return () => clearTimeout(t);
-  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [typed]);
+
+  const { data: list, loading, reload: load } = useCachedFetch(
+    `gp_customers_${q || "all"}`,
+    () => api("listCustomers", { q }).then((r) => r.data),
+    [q],
+    (e) => toast(e.message, "error"),
+  );
 
   return (
     <>
-      <TopBar title="Customers" back="more" />
+      <TopBar title="Customers" back="more" right={loading && list ? <span className="tiny muted">updating…</span> : null} />
       <div className="page">
-        <SearchBar value={q} onChange={setQ} placeholder="Name or mobile number" />
+        <SearchBar value={typed} onChange={setTyped} placeholder="Name or mobile number" />
         {!list ? (
           <div className="mt">
             <SkeletonList />
@@ -67,7 +68,7 @@ export default function Customers() {
         onSaved={(c) => {
           setEdit(null);
           setOpen(c);
-          load(q);
+          load();
         }}
       />
     </>

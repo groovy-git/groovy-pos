@@ -232,7 +232,7 @@ export default function ProductForm({ id }) {
               style={{ width: 88, height: 88, borderRadius: 12, border: "2px dashed var(--line)", background: "var(--bg)", overflow: "hidden", display: "grid", placeItems: "center", flex: "none", cursor: "pointer" }}
               aria-label="Add photo"
             >
-              {imgBusy ? <span className="spinner" /> : img ? <img src={img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Camera color="var(--muted)" />}
+              {imgBusy ? <span className="spinner" /> : img ? <img src={img} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Camera color="var(--muted)" />}
             </button>
             <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={pickPhoto} />
             <div className="grow small muted">

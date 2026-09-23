@@ -338,13 +338,48 @@ export function Chips({ options, value, onChange }) {
   );
 }
 
+/**
+ * A picture that is only asked for once it is nearly on screen.
+ *
+ * `loading="lazy"` alone was not enough: the browser decides for itself how far ahead to fetch, and
+ * on a product list that meant a couple of screens' worth of pictures starting at once — which on a
+ * weak connection is the whole line busy for a minute while the shop waits. 200px of warning keeps
+ * scrolling smooth without fetching what nobody has looked at.
+ */
+export function LazyImg({ src, style, onError }) {
+  const [near, setNear] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (near) return;
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setNear(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0] && entries[0].isIntersecting) {
+          setNear(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "200px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [near]);
+  return <img ref={ref} src={near ? src : undefined} alt="" loading="lazy" decoding="async" onError={onError} style={style} />;
+}
+
 export function Thumb({ item, size = 48, radius = 10 }) {
   const [bad, setBad] = useState(false);
-  const url = !bad && imageUrl(item.image, size * 3);
+  // one size for every list, so a product is fetched and cached once instead of once per screen
+  const url = !bad && imageUrl(item.image, 200);
   return (
     <div style={{ width: size, height: size, borderRadius: radius, overflow: "hidden", flex: "none" }}>
       {url ? (
-        <img src={url} alt="" loading="lazy" onError={() => setBad(true)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <LazyImg src={url} onError={() => setBad(true)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
       ) : (
         <div className="placeholder-mono" style={{ fontSize: size * 0.36 }}>
           {initials(item.brand || item.name)}

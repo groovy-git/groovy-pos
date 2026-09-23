@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Wallet, Trash2 } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { useCachedFetch } from "../lib/cached";
 import { runBusy } from "../lib/busy";
 import { inr, istDate, monthStart, relDay, METHOD_LABEL } from "../lib/format";
 import TopBar from "../components/TopBar";
@@ -19,24 +20,19 @@ function lastMonth() {
 export default function Expenses() {
   const { toast, isAllBranches, multiBranch } = useApp();
   const [preset, setPreset] = useState("month");
-  const [data, setData] = useState(null);
   const [edit, setEdit] = useState(null);
   const [from, to] = preset === "month" ? [monthStart(), istDate()] : preset === "last" ? lastMonth() : [istDate(), istDate()];
 
-  const load = () => {
-    setData(null);
-    api("listExpenses", { from, to })
-      .then((r) => setData(r.data))
-      .catch((e) => {
-        toast(e.message, "error");
-        setData({ expenses: [], total: 0 });
-      });
-  };
-  useEffect(load, [preset]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { data, loading, reload: load } = useCachedFetch(
+    `gp_expenses_${from}_${to}`,
+    () => api("listExpenses", { from, to }).then((r) => r.data),
+    [from, to],
+    (e) => toast(e.message, "error"),
+  );
 
   return (
     <>
-      <TopBar title="Expenses" back="more" />
+      <TopBar title="Expenses" back="more" right={loading && data ? <span className="tiny muted">updating…</span> : null} />
       <div className="page">
         <Chips
           value={preset}

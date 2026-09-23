@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, PackagePlus, Upload, Pencil, History, SlidersHorizontal, Boxes, Download, ArrowRightLeft } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { useCachedFetch } from "../lib/cached";
 import { runBusy } from "../lib/busy";
 import { navigate, useRoute } from "../lib/router";
 import { searchItems, lookupBarcode } from "../lib/catalog";
@@ -457,15 +458,8 @@ function ImportSheet({ open, onClose }) {
 
 function Batches() {
   const { toast, multiBranch } = useApp();
-  const [list, setList] = useState(null);
-  useEffect(() => {
-    api("stockInBatches")
-      .then((r) => setList(r.data))
-      .catch((e) => {
-        toast(e.message, "error");
-        setList([]);
-      });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // these two tabs are flipped between constantly; each keeps what it last showed
+  const { data: list } = useCachedFetch("gp_batches", () => api("stockInBatches").then((r) => r.data), [], (e) => toast(e.message, "error"));
   if (!list) return <SkeletonList />;
   return (
     <>
@@ -499,15 +493,7 @@ function Batches() {
 
 function Transfers() {
   const { toast, catalog } = useApp();
-  const [list, setList] = useState(null);
-  useEffect(() => {
-    api("listTransfers")
-      .then((r) => setList(r.data))
-      .catch((e) => {
-        toast(e.message, "error");
-        setList([]);
-      });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const { data: list } = useCachedFetch("gp_transfers", () => api("listTransfers").then((r) => r.data), [], (e) => toast(e.message, "error"));
   if (!list) return <SkeletonList />;
   return (
     <>

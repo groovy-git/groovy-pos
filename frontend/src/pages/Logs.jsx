@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { History } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
+import { useCachedFetch } from "../lib/cached";
 import { fmtDateTime } from "../lib/format";
 import TopBar from "../components/TopBar";
 import { Empty, SearchBar, SkeletonList } from "../components/ui";
@@ -9,25 +10,23 @@ import { Empty, SearchBar, SkeletonList } from "../components/ui";
 export default function Logs() {
   const { toast } = useApp();
   const [q, setQ] = useState("");
-  const [list, setList] = useState(null);
+  const [typed, setTyped] = useState("");
+  // wait for typing to stop before asking the server, and keep the last answer on screen meanwhile
   useEffect(() => {
-    const t = setTimeout(
-      () =>
-        api("listLogs", { q, limit: 300 })
-          .then((r) => setList(r.data))
-          .catch((e) => {
-            toast(e.message, "error");
-            setList([]);
-          }),
-      q ? 350 : 0,
-    );
+    const t = setTimeout(() => setQ(typed), typed ? 350 : 0);
     return () => clearTimeout(t);
-  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [typed]);
+  const { data: list, loading } = useCachedFetch(
+    `gp_logs_${q || "all"}`,
+    () => api("listLogs", { q, limit: 300 }).then((r) => r.data),
+    [q],
+    (e) => toast(e.message, "error"),
+  );
   return (
     <>
-      <TopBar title="Activity log" back="more" />
+      <TopBar title="Activity log" back="more" right={loading && list ? <span className="tiny muted">updating…</span> : null} />
       <div className="page">
-        <SearchBar value={q} onChange={setQ} placeholder="Search name, action, bill no" />
+        <SearchBar value={typed} onChange={setTyped} placeholder="Search name, action, bill no" />
         {!list ? (
           <div className="mt"><SkeletonList /></div>
         ) : list.length === 0 ? (

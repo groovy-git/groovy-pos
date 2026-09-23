@@ -63,9 +63,21 @@ function useHomeWhenLoggedOut(loggedOut) {
   }, [loggedOut]);
 }
 
+// on a weak or metered connection these files are competing with the shop's own data, so they wait
+function connectionIsCheap() {
+  try {
+    const c = navigator.connection;
+    if (!c) return true; // no way to tell (Safari) — behave as before
+    if (c.saveData) return false;
+    return !/(^|-)2g$/.test(c.effectiveType || "");
+  } catch {
+    return true;
+  }
+}
+
 function usePreloadScreens(ready) {
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !connectionIsCheap()) return;
     let i = 0;
     let stop = false;
     const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 300));
@@ -75,9 +87,11 @@ function usePreloadScreens(ready) {
         .catch(() => {}) // offline or a slow network: the screen loads normally when opened
         .then(() => idle(next));
     };
-    idle(next);
+    // let the screen the user is actually looking at finish loading its data first
+    const start = setTimeout(() => idle(next), 4000);
     return () => {
       stop = true;
+      clearTimeout(start);
     };
   }, [ready]);
 }
