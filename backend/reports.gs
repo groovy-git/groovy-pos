@@ -498,6 +498,10 @@ function branchBreakdown_(sales, returns, from, to, monthFrom) {
         const br = returns.filter((r) => mine(r.branch_id) && inRange_(r.at, from, to));
         const row = {
             branch_id: b.id, name: b.name, bills: bs.length,
+            items: itemsOf_(bs),
+            // customers whose FIRST bill anywhere was here, so each one is counted at one branch only
+            // and the branches add up to the shop's total
+            new_customers: newCustomersIn_(bs),
             sales: sumBy_(bs, "grand_total"), returns: sumBy_(br, "total"),
         };
         row.net = r2_(row.sales - row.returns);

@@ -163,7 +163,10 @@ function Report({ type, d }) {
             <div className="card-title"><h3>By branch</h3></div>
             {d.by_branch.map((b) => (
               <div key={b.branch_id} className="kv">
-                <span><b>{b.name}</b> <span className="small muted">· {plural("bill", b.bills)}{b.returns ? " · returns " + inr(b.returns) : ""}</span></span>
+                <span>
+                  <b>{b.name}</b> <span className="small muted">· {plural("bill", b.bills)}{b.returns ? " · returns " + inr(b.returns) : ""}</span>
+                  <div className="tiny muted">{plural("item", b.items || 0)} · {b.new_customers || 0} new to the shop</div>
+                </span>
                 <b className="money">{inr(b.net)}</b>
               </div>
             ))}

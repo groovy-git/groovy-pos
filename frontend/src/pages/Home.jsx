@@ -124,7 +124,10 @@ export default function Home() {
                 {d.by_branch.map((b) => (
                   <div key={b.branch_id} className="kv">
                     <span>
-                      <b>{b.name}</b> <span className="small muted">· {plural("bill", b.bills)}</span>
+                      <b>{b.name}</b> <span className="small muted">· {plural("bill", b.bills)} · {plural("item", b.items || 0)}</span>
+                      {/* a customer belongs to the branch that billed them first, so branches never
+                          claim the same person twice */}
+                      <div className="tiny muted">{b.new_customers || 0} new to the shop</div>
                     </span>
                     <span className="right">
                       <b className="money">{inr(b.net)}</b>

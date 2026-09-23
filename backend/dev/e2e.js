@@ -251,6 +251,8 @@ ok(call("emailDayClose", { copy_me: true }, M), "manager emails whole shop with 
 mail = env.mails.pop();
 check("manager mail is whole shop", /Whole shop/.test(mail.htmlBody) && /Cash in drawer/.test(mail.htmlBody) && mail.cc === "imran@x.in", mail.cc);
 check("mail lists items sold with stock left", /Items sold/.test(mail.htmlBody) && /Asad EDP/.test(mail.htmlBody) && /Stock left/.test(mail.htmlBody) && /Items sold:/.test(mail.body), mail.body);
+// per salesman: under the name, worded so it can't be mistaken for the per-product 'Items sold' table
+check("mail shows items billed and new customers per salesman", /items billed · \d+ new customer/.test(mail.htmlBody) && /bills, \d+ items, \d+ new,/.test(mail.body), mail.htmlBody.slice(0, 200));
 check("bad report email rejected", !call("saveSettings", { settings: { report_emails: "owner@x.in, not-an-email" } }, T).success);
 check("salesman cannot see report emails", call("getSettings", {}, S1).data.report_emails === undefined);
 for (let i = 0; i < 4; i++) call("emailDayClose", {}, S1);
@@ -584,6 +586,17 @@ const dcKN = ok(call("report", { type: "day_close" }, T, KN), "day close KN");
 check("KN day close only KN bills", dcKN.bills === 1 && dcKN.branch_name === "Kalyani Nagar", { bills: dcKN.bills });
 const dcAll = ok(call("report", { type: "day_close" }, T, 0), "day close all");
 check("all-branches day close has breakdown", dcAll.by_branch.length === 2 && Math.abs(dcAll.by_branch.reduce((a, b) => a + b.net, 0) - dcAll.net) < 0.01, dcAll.by_branch);
+// a customer belongs to the branch that billed them first, so the branches add up to the whole shop
+const sumBr = (f) => dcAll.by_branch.reduce((a, b) => a + b[f], 0);
+check("per-branch items add up to the whole shop", Math.abs(sumBr("items") - dcAll.by_salesman.reduce((a, r) => a + r.items, 0)) < 0.001, dcAll.by_branch);
+check("a new customer is counted at one branch only", sumBr("new_customers") === dcAll.by_salesman.reduce((a, r) => a + r.new_customers, 0), dcAll.by_branch);
+// the same customer billed at a second branch is not new there
+const crossArgs = { client_ref: "cross-1", lines: [{ variant_id: vBottle.id, qty: 1 }], payments: [{ method: "cash", amount: 50 }], customer: { phone: "9822200011", name: "Cross Branch" } };
+ok(call("completeSale", crossArgs, T, 1), "new customer's first bill at Kondhwa");
+const knNewBefore = ok(call("dashboard", {}, T, KN), "KN dashboard before the cross-branch bill").today.new_customers;
+ok(call("completeSale", Object.assign({}, crossArgs, { client_ref: "cross-2" }), KIRAN.token, KN), "same customer later at KN");
+check("a customer is new to the shop once, not once per branch", ok(call("dashboard", {}, T, KN), "KN dash after").today.new_customers === knNewBefore, { knNewBefore });
+check("and they count at the branch that billed them first", ok(call("dashboard", {}, T, 0), "all dash").by_branch.find((b) => b.branch_id === 1).new_customers >= 1);
 check("salesman can't use All", branchesErr(call("dashboard", {}, RAVI.token, 999)));
 
 // expenses & held bills stay with their branch

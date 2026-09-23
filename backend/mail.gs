@@ -68,8 +68,14 @@ function dayCloseMail_(d, s, opt) {
         .map((m) => "<tr><td " + td + ">" + (METHOD_NAME_[m] || m) + "</td><td " + tdr + ">" + inrText_(d.methods[m].in) + "</td><td " + tdr + ">" +
             inrText_(d.methods[m].out) + "</td><td " + tdr + "><b>" + inrText_(d.methods[m].net) + "</b></td></tr>")
         .join("");
+    // items billed and new customers go under the name, not in columns of their own: six columns in a
+    // 560px-wide email wrap badly on a phone. "Items billed" keeps them distinct from the per-product
+    // "Items sold" table further down, which counts the same goods a different way (net of returns).
+    const sub = (txt) => '<div style="font-size:11px;color:#7A716A">' + txt + "</div>";
     const sellers = d.by_salesman
-        .map((r, i) => "<tr><td " + td + ">" + (i + 1) + ". " + escHtml_(r.name) + "</td><td " + tdr + ">" + r.bills + "</td><td " + tdr + ">" +
+        .map((r, i) => "<tr><td " + td + ">" + (i + 1) + ". " + escHtml_(r.name) +
+            sub(r.items + " items billed · " + r.new_customers + " new " + (r.new_customers === 1 ? "customer" : "customers")) +
+            "</td><td " + tdr + ">" + r.bills + "</td><td " + tdr + ">" +
             inrText_(r.returns) + "</td><td " + tdr + "><b>" + inrText_(r.net) + "</b></td></tr>")
         .join("");
     // what was sold, with stock left — for refilling
@@ -110,7 +116,9 @@ function dayCloseMail_(d, s, opt) {
         ((d.by_branch || []).length
             ? '<h3 style="font-family:Georgia,serif;color:#654321;margin:18px 0 6px">By branch</h3><table style="width:100%;border-collapse:collapse;font-size:14px"><tr><th ' +
               th + ">Branch</th><th " + thr + ">Bills</th><th " + thr + ">Returns</th><th " + thr + ">Net</th></tr>" +
-              d.by_branch.map((b) => "<tr><td " + td + ">" + escHtml_(b.name) + "</td><td " + tdr + ">" + b.bills + "</td><td " + tdr + ">" + inrText_(b.returns) + "</td><td " + tdr + "><b>" + inrText_(b.net) + "</b></td></tr>").join("") +
+              d.by_branch.map((b) => "<tr><td " + td + ">" + escHtml_(b.name) +
+                  sub(b.items + " items billed · " + b.new_customers + " new to the shop") +
+                  "</td><td " + tdr + ">" + b.bills + "</td><td " + tdr + ">" + inrText_(b.returns) + "</td><td " + tdr + "><b>" + inrText_(b.net) + "</b></td></tr>").join("") +
               "</table>"
             : "") +
         '<h3 style="font-family:Georgia,serif;color:#654321;margin:18px 0 6px">' + (opt.salesman ? "Your sales" : "By salesman") + "</h3>" +
@@ -137,7 +145,9 @@ function dayCloseMail_(d, s, opt) {
         Object.keys(d.methods).map((m) => (METHOD_NAME_[m] || m) + ": " + inrText_(d.methods[m].net)).join("   "),
         opt.salesman ? "" : "Cash in drawer (expected): " + inrText_(d.expected_cash),
         "",
-        d.by_salesman.map((r) => r.name + ": " + r.bills + " bills, " + inrText_(r.net)).join("\n"),
+        d.by_salesman
+            .map((r) => r.name + ": " + r.bills + " bills, " + r.items + " items, " + r.new_customers + " new, " + inrText_(r.net))
+            .join("\n"),
         items.length ? "\nItems sold:" : "",
         items
             .map((it) => "- " + it.name + (it.unit === "ml" ? "" : " " + it.size) + ": sold " + qtyTxt(it.qty, it.unit) + ", left " + qtyTxt(it.stock_left, it.unit) + (it.refill ? "  << REFILL" : ""))
