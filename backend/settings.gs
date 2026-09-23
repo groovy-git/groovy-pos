@@ -33,8 +33,21 @@ function nextCounter_(key) {
     return n;
 }
 
+/**
+ * Two counters, because they change at very different rates.
+ *
+ * The catalogue — names, prices, images, brands — changes when somebody edits a product. Stock changes
+ * with every single bill. They used to share one number, so every sale told every device that its
+ * whole catalogue was out of date, and a busy shop re-sent ~1,700 products per sale per phone.
+ * A catalogue change moves both (an edit can change stock too); a sale moves only the stock one.
+ */
 function bumpCatalogVersion_() {
     setSetting_("catalog_version", num_(setting_("catalog_version"), 1) + 1, 0);
+    bumpStockVersion_();
+}
+
+function bumpStockVersion_() {
+    setSetting_("stock_version", num_(setting_("stock_version"), 1) + 1, 0);
 }
 
 // settings visible to logged-in users (counters hidden; report recipients only for admins)

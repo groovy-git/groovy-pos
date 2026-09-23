@@ -69,7 +69,7 @@ function apiStockIn_(p, ctx) {
                 total_qty: r3_(totalQty), total_cost: r2_(totalCost), user_id: ctx.user.id, at: now, branch_id: branch,
             },
         ]);
-        bumpCatalogVersion_();
+        bumpCatalogVersion_(); // stock-in moves the average cost, which rides with the catalogue
         log_(ctx, "STOCK_IN", "Stock_In_Batches", batchId, branchName_(branch) + ": " + lines.length + " items, qty " + r3_(totalQty) + (p.supplier_note ? " — " + p.supplier_note : ""));
         return {
             message: "Stock added: " + r3_(totalQty) + " units in " + lines.length + " items",
@@ -109,7 +109,7 @@ function apiAdjustStock_(p, ctx) {
                 user_id: ctx.user.id, at: nowStr_(), branch_id: branch,
             },
         ]);
-        bumpCatalogVersion_();
+        bumpStockVersion_();
         log_(ctx, "ADJUST", "Variants", v.id, branchName_(branch) + ": " + type + " " + (delta > 0 ? "+" : "") + delta + " → " + bal);
         return { message: "Stock updated to " + bal, data: { id: v.id, stock_qty: bal } };
     });
@@ -169,7 +169,7 @@ function apiTransferStock_(p, ctx) {
             { id, transfer_no: no, from_branch_id: from, to_branch_id: to, lines: lines.length, total_qty: totalQty, note: str_(p.note), user_id: ctx.user.id, at: now },
         ]);
         appendRows_("Stock_Movements", moves);
-        bumpCatalogVersion_();
+        bumpStockVersion_();
         log_(ctx, "TRANSFER", "Transfers", id, no + ": " + totalQty + " units " + branchName_(from) + " → " + toB.name);
         return {
             message: "Sent " + totalQty + (totalQty === 1 ? " unit" : " units") + " to " + toB.name + " (" + no + ")",

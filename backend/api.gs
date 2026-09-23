@@ -28,6 +28,7 @@ function actions_() {
     changePassword: { fn: apiChangePassword_, roles: ALL_ },
     getSettings: { fn: apiGetSettings_, roles: ALL_ },
     getCatalog: { fn: apiGetCatalog_, roles: ALL_ },
+    getStock: { fn: apiGetStock_, roles: ALL_ },
     listSellers: { fn: apiListSellers_, roles: ALL_ },
     findCustomer: { fn: apiFindCustomer_, roles: ALL_ },
     listCustomers: { fn: apiListCustomers_, roles: ALL_ },
@@ -93,7 +94,7 @@ function doPost(e) {
 // reads are safe to run again, so their saved reply is kept only briefly — long enough to cover a
 // retry after Google loses one, not long enough to hand anyone stale figures
 const READ_ACTIONS_ = {
-    bootstrap: 1, getCatalog: 1, dashboard: 1, listSales: 1, getSale: 1, report: 1, listCustomers: 1, findCustomer: 1,
+    bootstrap: 1, getCatalog: 1, getStock: 1, dashboard: 1, listSales: 1, getSale: 1, report: 1, listCustomers: 1, findCustomer: 1,
     listHeld: 1, movements: 1, listExpenses: 1, listUsers: 1, listLogs: 1, customerHistory: 1, listSellers: 1,
     getSettings: 1, stockInBatches: 1, listTransfers: 1, listBranches: 1, me: 1, ping: 1,
 };
@@ -167,6 +168,7 @@ function dispatch_(req) {
             message: res.message || "",
             data: res.data === undefined ? null : res.data,
             cv: ctx ? num_(setting_("catalog_version"), 1) : undefined,
+            sv: ctx ? num_(setting_("stock_version"), 1) : undefined,
         };
     } catch (err) {
         if (err && err.isAppError) return { success: false, code: err.code, message: err.message };

@@ -129,6 +129,7 @@ const DEFAULT_SETTINGS = {
     invoice_pdfs: "yes",
     internal_barcode_seq: "0",
     catalog_version: "1",
+    stock_version: "1",
 };
 
 // category defaults (HSN / GST %) — owner should confirm with their CA

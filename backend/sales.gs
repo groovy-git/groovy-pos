@@ -161,7 +161,7 @@ function apiCompleteSale_(p, ctx) {
         appendRows_("Sale_Items", saleItems);
         appendRows_("Payments", payRows);
         appendRows_("Stock_Movements", moves);
-        bumpCatalogVersion_();
+        bumpStockVersion_();
 
         if (p.held_id) {
             const h = findBy_("Held_Bills", "id", Number(p.held_id));
@@ -265,7 +265,7 @@ function apiVoidSale_(p, ctx) {
         s.updated_at = now;
         updateRows_("Sales", [s]);
         adjustCustomerTotals_(s.customer_id, -s.grand_total, -1);
-        bumpCatalogVersion_();
+        bumpStockVersion_();
         log_(ctx, "VOID", "Sales", s.id, s.invoice_no + " — " + reason);
         return { message: "Bill voided, stock restored", data: saleDetail_(s, ctx) };
     });
@@ -363,7 +363,7 @@ function apiReturnItems_(p, ctx) {
         s.updated_at = now;
         updateRows_("Sales", [s]);
         adjustCustomerTotals_(s.customer_id, -total, 0);
-        if (restocks.length) bumpCatalogVersion_();
+        if (restocks.length) bumpStockVersion_();
         log_(ctx, "RETURN", "Sales", s.id, cn + " for " + s.invoice_no + " ₹" + total + " — " + reason);
         return { message: "Return saved. Refund ₹" + total + " (" + cn + ")", data: saleDetail_(s, ctx) };
     });

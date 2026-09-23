@@ -935,14 +935,26 @@ check("no version sent (an older app): full payload", !envR.call("getCatalog", {
 // stock is per branch, so the same version at a different branch must still send the figures
 const otherBranch = envR.call("getCatalog", { catalog_version: cv.version, catalog_branch: cv.branch_id + 99 }, RT2).data;
 check("same version, different branch: full payload", !otherBranch.unchanged && Array.isArray(otherBranch.variants));
-// a sale moves stock, and the version moves with it, so the app is told to refetch
+// a sale moves stock but not the catalogue: the big payload is NOT sent again, and the new figure
+// arrives as a small stock update instead
+const beforeStock = envR.call("getStock", {}, RT2, 1).data;
 envR.call("completeSale", { client_ref: "r-4", lines: [{ variant_id: rVid, qty: 1 }], payments: [{ method: "cash", amount: 400 }] }, RT2, 1);
 const afterSale = envR.call("getCatalog", { catalog_version: cv.version, catalog_branch: cv.branch_id }, RT2).data;
-check("after a sale: payload sent again, with the new stock",
-    !afterSale.unchanged && afterSale.version > cv.version &&
-    afterSale.variants.find((v) => v.id === rVid).stock_qty === cv.variants.find((v) => v.id === rVid).stock_qty - 1, afterSale.version);
+check("after a sale the catalogue is not sent again", afterSale.unchanged === true && afterSale.version === cv.version, afterSale.version);
+const afterStock = envR.call("getStock", { since: beforeStock.at }, RT2, 1).data;
+check("after a sale the stock update carries the new figure",
+    afterStock.stock_version > beforeStock.stock_version && afterStock.changed[rVid] === cv.variants.find((v) => v.id === rVid).stock_qty - 1,
+    { changed: afterStock.changed, was: cv.variants.find((v) => v.id === rVid).stock_qty });
+check("the stock update only carries what moved", Object.keys(afterStock.changed).length <= 2 && !afterStock.full, afterStock.changed);
+// with no starting point, the whole map comes back and says so
+const wholeMap = envR.call("getStock", {}, RT2, 1).data;
+check("a device with no starting point gets the whole stock map", wholeMap.full === true && Object.keys(wholeMap.changed).length > 0, Object.keys(wholeMap.changed).length);
+// a catalogue edit still does move the version, and the payload comes again
+const gateBrand = envR.call("saveBrand", { name: "Gate Test Brand" }, RT2, 1);
+const afterEdit = envR.call("getCatalog", { catalog_version: cv.version, catalog_branch: cv.branch_id }, RT2, 1).data;
+check("editing the catalogue does send it again", gateBrand.success && !afterEdit.unchanged && afterEdit.version > cv.version, { brand: gateBrand.message, version: afterEdit.version, was: cv.version });
 // bootstrap carries the same gate, since that is what the app calls on open
-const bootGate = envR.call("bootstrap", { catalog_version: afterSale.version, catalog_branch: afterSale.branch_id }, RT2, 1).data;
+const bootGate = envR.call("bootstrap", { catalog_version: afterEdit.version, catalog_branch: afterEdit.branch_id }, RT2, 1).data;
 check("bootstrap skips an unchanged catalogue too", bootGate.catalog.unchanged === true && !bootGate.catalog.variants && !!bootGate.settings && !!bootGate.user, bootGate.catalog);
 
 // cost price is manager-only, so a role change makes a cached catalogue the wrong shape for that

@@ -45,6 +45,8 @@ export function AppProvider({ children }) {
   const rawCatalogRef = useRef(rawCatalog);
   const branchRef = useRef(branchId);
   const refreshing = useRef(false);
+  const refreshingStock = useRef(false);
+  const stockVersionRef = useRef(Number(load("gp_stock_version", 0)) || 0);
 
   const toast = useCallback((message, type = "info", ms = 2600) => {
     const id = Math.random();
@@ -68,6 +70,12 @@ export function AppProvider({ children }) {
     cachedRef.current = { version: next.version, branch: next._branch };
     setRawCatalog(next);
     save("gp_catalog", next);
+    // the catalogue carries current stock, so this is a fresh starting point for stock updates too
+    if (c.stock_version) {
+      stockVersionRef.current = c.stock_version;
+      save("gp_stock_version", c.stock_version);
+    }
+    if (c.at) save("gp_stock_at", c.at);
   }, []);
 
   // sent with every request so the server can skip the payload when nothing has changed for us
@@ -82,6 +90,46 @@ export function AppProvider({ children }) {
       setCartState(load(cartKey(b), EMPTY_CART));
     }
     setBranchId(b);
+  }, []);
+
+  /**
+   * Stock changed somewhere — fetch just what moved since this phone was last up to date.
+   * `stock_at` is the server's clock, not this device's, so a phone with a wrong time still asks for
+   * the right window. Without it (a fresh install, or a phone that has been off a long time) the
+   * server sends the whole map and says so.
+   */
+  const refreshStock = useCallback(async () => {
+    if (refreshingStock.current) return;
+    refreshingStock.current = true;
+    try {
+      const since = load("gp_stock_at", "");
+      const r = await api("getStock", since ? { since } : {});
+      const d = r.data;
+      setRawCatalog((c) => {
+        if (!c) return c;
+        const qty = d.changed || {};
+        const byBranch = d.by_branch || {};
+        const next = {
+          ...c,
+          variants: c.variants.map((v) =>
+            Object.prototype.hasOwnProperty.call(qty, v.id)
+              ? { ...v, stock_qty: qty[v.id], stock_by_branch: byBranch[v.id] || v.stock_by_branch }
+              : d.full
+                ? { ...v, stock_qty: 0, stock_by_branch: byBranch[v.id] || {} } // full map: anything missing has none left
+                : v,
+          ),
+        };
+        save("gp_catalog", next);
+        return next;
+      });
+      stockVersionRef.current = d.stock_version;
+      save("gp_stock_version", d.stock_version);
+      save("gp_stock_at", d.at);
+    } catch {
+      /* keep what we have; the next reply will ask again */
+    } finally {
+      refreshingStock.current = false;
+    }
   }, []);
 
   const refreshCatalog = useCallback(async () => {
@@ -102,7 +150,7 @@ export function AppProvider({ children }) {
     clearBranch(); // the next person on this phone starts at their own home branch
     // shared phones: the next person must not see this person's data (costs, carts, figures, emails)
     Object.keys(localStorage)
-      .filter((k) => /^gp_(user|sellers|catalog|settings|branches|cart)/.test(k))
+      .filter((k) => /^gp_(user|sellers|catalog|settings|branches|cart|stock)/.test(k))
       .forEach((k) => localStorage.removeItem(k));
     try {
       sessionStorage.clear(); // dashboard cache, drafts, filters
@@ -112,6 +160,7 @@ export function AppProvider({ children }) {
     setRawCatalog(null);
     cachedRef.current = null; // the next person downloads the catalogue fresh
     rawCatalogRef.current = null;
+    stockVersionRef.current = 0;
     setSettings({});
     setUser(null);
     branchRef.current = 0;
@@ -126,14 +175,17 @@ export function AppProvider({ children }) {
         logoutLocal();
         toast("Please log in again", "warn");
       },
-      // every reply carries the server's catalogue version; a higher one means someone else changed
-      // something. Not while the first load is still running — bootstrap is already fetching it, and
-      // asking again here downloaded the whole catalogue a second time on every login.
-      version: (cv) => {
+      // Every reply carries two numbers: the catalogue's version and the stock's. A higher catalogue
+      // number means someone edited a product, so the whole thing is fetched again — rare. A higher
+      // stock number means someone sold something, so only what moved is fetched — constant, and it
+      // used to drag the entire catalogue down with it.
+      // Neither runs while the first load is still going: bootstrap is already fetching it.
+      version: (cv, sv) => {
         if (cv > versionRef.current && cachedRef.current) refreshCatalog();
+        else if (sv && sv > stockVersionRef.current && cachedRef.current) refreshStock();
       },
     });
-  }, [logoutLocal, refreshCatalog, toast]);
+  }, [logoutLocal, refreshCatalog, refreshStock, toast]);
 
   const bootstrap = useCallback(async () => {
     let r;

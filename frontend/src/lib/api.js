@@ -72,7 +72,7 @@ export async function api(action, payload = {}) {
       json = null; // network drop / timeout
     }
     if (json) {
-      if (json.cv) handlers.version(json.cv);
+      if (json.cv) handlers.version(json.cv, json.sv);
       if (json.success) return json;
       if (json.code === "IN_PROGRESS" && i < attempts - 1) {
         await sleep(1500); // the first try is still being saved — ask again for its result

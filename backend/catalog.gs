@@ -27,6 +27,9 @@ function apiGetCatalog_(p, ctx) {
         data: {
             version: version,
             branch_id: num_(ctx.branch_id),
+            // where stock updates start from: this payload already holds current stock
+            stock_version: num_(setting_("stock_version"), 1),
+            at: nowStr_(),
             brands: core.brands,
             categories: core.categories,
             products: core.products,
@@ -697,4 +700,45 @@ function apiImportCatalog_(p, ctx) {
             data: { products: newProds.length, variants: newVars.length, updated, unchanged, stock_ignored: stockIgnored, barcodes_filled: barcodesFilled, errors },
         };
     });
+}
+
+/* ---------- stock, on its own ---------- */
+
+/**
+ * What stock has changed since the app last asked.
+ *
+ * The catalogue is big and rarely changes; stock is tiny and changes with every bill. This answers
+ * the second question on its own, so a sale on one phone no longer makes every other phone fetch
+ * seventeen hundred products again.
+ *
+ * `since` is the timestamp the caller was last up to date at. The stock movements written since then
+ * name the variants that moved, and only those are sent back. Without a usable `since` — a new
+ * device, or one that has been off for longer than the movement history it can see — the whole map
+ * comes back and the reply says so.
+ */
+function apiGetStock_(p, ctx) {
+    const now = nowStr_();
+    const version = num_(setting_("stock_version"), 1);
+    const since = str_(p && p.since);
+    const branch = num_(ctx.branch_id);
+    if (since && since.length >= 10) {
+        const moved = {};
+        windowRows_("Stock_Movements", "at", since, null).forEach((m) => (moved[m.variant_id] = true));
+        const ids = Object.keys(moved).map(Number);
+        if (ids.length <= 400) {
+            const byBranch = stockByBranch_();
+            const stock = stockMap_(branch);
+            const changed = {};
+            const changedByBranch = {};
+            ids.forEach((id) => {
+                changed[id] = stock[id] || 0;
+                changedByBranch[id] = byBranch[id] || {};
+            });
+            return { data: { stock_version: version, branch_id: branch, at: now, changed, by_branch: changedByBranch } };
+        }
+    }
+    // no usable starting point, or so much has moved that the whole map is cheaper to send
+    const byBranch = stockByBranch_();
+    const stock = stockMap_(branch);
+    return { data: { stock_version: version, branch_id: branch, at: now, full: true, changed: stock, by_branch: byBranch } };
 }
