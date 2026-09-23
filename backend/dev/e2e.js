@@ -158,6 +158,15 @@ check("bottle restored by void", catg.variants.find((v) => v.id === vBottle.id).
 const dash = ok(call("dashboard", {}, T), "dashboard");
 check("dash today net = 4000 - refund", Math.abs(dash.today.net - (4000 - ret.returns[0].total)) < 0.01, dash.today);
 check("leaderboard has Sameer", dash.leaderboard.today.some((r) => r.name === "Sameer"));
+// items sold + new customers per salesman. Sameer's bill: Asad x2 (pcs) + 6ml loose (counts 1) + 1 bottle = 4.
+// Rahul was a brand-new customer on it; Ayesha's walk-in bill was voided, so she is in nobody's figures.
+const lbS = dash.leaderboard.today.find((r) => r.name === "Sameer");
+check("leaderboard items as billed", lbS.items === 4, lbS);
+check("new customer credited to the first bill's salesman", lbS.new_customers === 1, lbS);
+check("dashboard today items + new customers", dash.today.items === 4 && dash.today.new_customers === 1, dash.today);
+check("voided bill is in nobody's figures", !dash.leaderboard.today.some((r) => r.name === "Ayesha"), dash.leaderboard.today);
+const lsSum = ok(call("listSales", {}, T), "admin list summary").summary;
+check("list summary counts the same, voided bill excluded", lsSum.items === 4 && lsSum.new_customers === 1, lsSum);
 const dc = ok(call("report", { type: "day_close" }, T), "day close");
 // items sold (for refilling): net of returns, voided bills excluded, current stock shown
 const dcItem = (id) => dc.items.find((i) => i.variant_id === id);
@@ -173,6 +182,47 @@ const gst = ok(call("report", { type: "gst_summary" }, T), "gst");
 check("gst totals", Math.abs(gst.totals.total - 4000) < 0.01, gst.totals);
 const pr = ok(call("report", { type: "profit" }, T), "profit");
 check("profit computed", pr.revenue_ex_gst > 0 && pr.cost_of_goods > 0, pr);
+check("day close items is still the list of products sold", Array.isArray(dc.items) && dc.by_salesman[0].items === 4 && dc.by_salesman[0].new_customers === 1, dc.by_salesman);
+
+// ---- new customers: repeats, walk-ins, hand-added, and a voided first bill ----
+const perfRows = () => ok(call("report", { type: "salesman_performance", from: "2020-01-01" }, T), "salesman perf").rows;
+const perfFor = (name) => perfRows().find((r) => r.name === name) || { items: 0, new_customers: 0 };
+check("salesman_performance carries both", perfFor("Sameer").items === 4 && perfFor("Sameer").new_customers === 1, perfFor("Sameer"));
+
+// a second bill for the same phone: items add up, the customer is not new again
+ok(call("completeSale", sArgs({ client_ref: "nc-repeat", customer: { phone: "9876543210" }, salesman_id: ayesha.id }), M), "second bill for Rahul");
+check("a repeat customer is new only once", perfFor("Sameer").new_customers === 1 && perfFor("Ayesha").new_customers === 0, perfRows());
+check("the repeat bill's item is counted", perfFor("Ayesha").items === 1, perfFor("Ayesha"));
+
+// walk-in (no phone) and a customer added on the Customers page but never billed: neither is new
+const ncBefore = ok(call("dashboard", {}, T), "dash before walk-in").today.new_customers;
+ok(call("completeSale", sArgs({ client_ref: "nc-walkin", customer: { name: "No phone" } }), M), "walk-in bill");
+ok(call("saveCustomer", { name: "Never Billed", phone: "9800000001" }, T), "customer added by hand");
+check("walk-ins and unbilled customers are not new customers", ok(call("dashboard", {}, T), "dash after walk-in").today.new_customers === ncBefore);
+// …until someone bills them, and then it is that salesman's
+ok(call("completeSale", sArgs({ client_ref: "nc-hand", customer: { phone: "9800000001" }, salesman_id: ayesha.id }), M), "Ayesha bills the hand-added customer");
+check("a hand-added customer counts on their first bill", perfFor("Ayesha").new_customers === 1, perfFor("Ayesha"));
+
+// a voided first bill credits nobody, and the customer's next bill counts instead
+const nb1 = ok(call("completeSale", sArgs({ client_ref: "nc-void-1", customer: { phone: "9811111111", name: "Nisha" } }), S1), "Sameer bills a new customer").sale;
+ok(call("voidSale", { id: nb1.id, reason: "Rang up by mistake" }, M), "void that first bill");
+check("a voided first bill credits nobody", perfFor("Sameer").new_customers === 1, perfFor("Sameer"));
+ok(call("completeSale", sArgs({ client_ref: "nc-void-2", customer: { phone: "9811111111" }, salesman_id: ayesha.id }), M), "Ayesha bills her next");
+check("after a voided first bill the next one counts", perfFor("Ayesha").new_customers === 2, perfFor("Ayesha"));
+
+// the three screens must agree: Home tiles = sum of the leaderboard = the Sales page summary
+const dash2 = ok(call("dashboard", {}, T), "dashboard after the new bills");
+const rows2 = perfRows();
+const sumOf = (f) => rows2.reduce((a, r) => a + r[f], 0);
+check("Home tiles = sum of the per-salesman rows", Math.abs(dash2.today.items - sumOf("items")) < 0.001 && dash2.today.new_customers === sumOf("new_customers"), [dash2.today, rows2]);
+const sum2 = ok(call("listSales", {}, T), "list summary again").summary;
+check("Sales page summary = Home tiles", sum2.items === dash2.today.items && sum2.new_customers === dash2.today.new_customers, [sum2, dash2.today]);
+const sumA = ok(call("listSales", { salesman_id: ayesha.id }, T), "list filtered by salesman").summary;
+check("the summary follows the salesman filter", sumA.items === perfFor("Ayesha").items && sumA.new_customers === perfFor("Ayesha").new_customers, [sumA, perfFor("Ayesha")]);
+const s1Dash = ok(call("dashboard", {}, S1), "salesman's own dashboard");
+check("a salesman sees only their own figures", s1Dash.today.items === perfFor("Sameer").items && s1Dash.today.new_customers === 1, s1Dash.today);
+const dcA = ok(call("report", { type: "day_close" }, S2), "ayesha day close").by_salesman;
+check("a salesman's day close has only their own row", dcA.length === 1 && dcA[0].name === "Ayesha" && dcA[0].new_customers === perfFor("Ayesha").new_customers, dcA);
 ok(call("report", { type: "salesman_performance", from: "2020-01-01" }, T), "salesman perf");
 ok(call("report", { type: "product_sales", group: "brand" }, T), "product sales");
 ok(call("report", { type: "stock_valuation" }, T), "stock valuation");

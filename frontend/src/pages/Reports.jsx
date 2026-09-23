@@ -387,7 +387,7 @@ function SalesmenTable({ rows, title, full, csv }) {
     <div className="card mt table-wrap">
       <div className="card-title">
         <h3 className="row gap-s"><Trophy size={17} color="var(--gold-dark)" /> {title}</h3>
-        {csv && <Csv name="salesman-performance" rows={rows} cols={[{ key: "name", label: "Salesman" }, { key: "bills", label: "Bills" }, { key: "items", label: "Items" }, { key: "gross", label: "Gross" }, { key: "discount", label: "Discount" }, { key: "sales", label: "Sales" }, { key: "returns", label: "Returns" }, { key: "net", label: "Net" }, { key: "avg_bill", label: "Avg bill" }]} />}
+        {csv && <Csv name="salesman-performance" rows={rows} cols={[{ key: "name", label: "Salesman" }, { key: "bills", label: "Bills" }, { key: "items", label: "Items" }, { key: "new_customers", label: "New customers" }, { key: "gross", label: "Gross" }, { key: "discount", label: "Discount" }, { key: "sales", label: "Sales" }, { key: "returns", label: "Returns" }, { key: "net", label: "Net" }, { key: "avg_bill", label: "Avg bill" }]} />}
       </div>
       {rows.length === 0 ? (
         <div className="muted small">No sales.</div>
@@ -396,7 +396,7 @@ function SalesmenTable({ rows, title, full, csv }) {
           <thead><tr><th>Salesman</th><th className="num">Bills</th>{full && <th className="num">Disc.</th>}<th className="num">Returns</th><th className="num">Net</th></tr></thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.salesman_id}><td><b>{r.name}</b><div className="tiny muted">avg {inr(Math.round(r.avg_bill))}{full ? ` · ${r.items} items` : ""}</div></td><td className="num">{r.bills}</td>{full && <td className="num">{inr(r.discount)}</td>}<td className="num">{inr(r.returns)}</td><td className="num"><b>{inr(r.net)}</b></td></tr>
+              <tr key={r.salesman_id}><td><b>{r.name}</b><div className="tiny muted">{plural("item", r.items || 0)} · {r.new_customers || 0} new</div><div className="tiny muted">avg {inr(Math.round(r.avg_bill))}</div></td><td className="num">{r.bills}</td>{full && <td className="num">{inr(r.discount)}</td>}<td className="num">{inr(r.returns)}</td><td className="num"><b>{inr(r.net)}</b></td></tr>
             ))}
           </tbody>
         </table>

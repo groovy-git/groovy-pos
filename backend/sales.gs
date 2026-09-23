@@ -155,6 +155,7 @@ function apiCompleteSale_(p, ctx) {
         });
 
         appendRows_("Sales", [sale]);
+        delete REQ_CACHE_.__firstBill; // this bill may be a customer's first — don't answer from a map built before it
         appendRows_("Sale_Items", saleItems);
         appendRows_("Payments", payRows);
         appendRows_("Stock_Movements", moves);
@@ -205,7 +206,14 @@ function apiListSales_(p, ctx) {
         }));
     const valid = list.filter((s) => s.status !== "voided");
     const total = r2_(valid.reduce((a, s) => a + s.grand_total - s.refunded, 0));
-    return { data: { sales: list, summary: { bills: valid.length, net: total } } };
+    // the same bills again, as sheet rows — they carry customer_id, which the list above leaves out
+    const validRows = rows.filter((s) => s.status !== "voided");
+    return {
+        data: {
+            sales: list,
+            summary: { bills: valid.length, net: total, items: itemsOf_(validRows), new_customers: newCustomersIn_(validRows) },
+        },
+    };
 }
 
 function apiGetSale_(p, ctx) {

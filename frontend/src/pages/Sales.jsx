@@ -103,6 +103,14 @@ export default function Sales() {
               <div className="label">Bills</div>
               <div className="value">{data.summary.bills}</div>
             </div>
+            <div className="stat">
+              <div className="label">Items sold</div>
+              <div className="value">{data.summary.items || 0}</div>
+            </div>
+            <div className="stat">
+              <div className="label">New customers</div>
+              <div className="value">{data.summary.new_customers || 0}</div>
+            </div>
           </div>
         )}
 

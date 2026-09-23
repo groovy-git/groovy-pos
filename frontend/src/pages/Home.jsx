@@ -104,6 +104,15 @@ export default function Home() {
                 <div className="label">Returns</div>
                 <div className="value">{inr(d.today.returns)}</div>
               </div>
+              {/* a dashboard saved before this update has neither figure, so both default to 0 */}
+              <div className="stat">
+                <div className="label">Items sold</div>
+                <div className="value">{d.today.items || 0}</div>
+              </div>
+              <div className="stat">
+                <div className="label">New customers</div>
+                <div className="value">{d.today.new_customers || 0}</div>
+              </div>
             </div>
 
             {isAllBranches && d.by_branch && (
@@ -176,6 +185,10 @@ export default function Home() {
                       <div className="tiny muted">
                         {r.bills} bills · avg {inr(Math.round(r.avg_bill))}
                         {r.returns > 0 ? ` · returns ${inr(r.returns)}` : ""}
+                      </div>
+                      {/* on its own line: with returns too, one line wraps awkwardly on a phone */}
+                      <div className="tiny muted">
+                        {plural("item", r.items || 0)} · {r.new_customers || 0} new
                       </div>
                     </div>
                   </div>

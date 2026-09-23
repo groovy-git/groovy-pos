@@ -31,6 +31,44 @@ function sumBy_(rows, f) {
     return r2_(rows.reduce((a, r) => a + (typeof f === "function" ? f(r) : r[f]), 0));
 }
 
+/**
+ * Who brought each customer in: the salesman on their first bill ever. Returns {customer_id: sale id}.
+ *
+ * Built from EVERY bill, not the caller's scoped set, so a repeat customer is never counted as new
+ * again and credit only goes to whoever billed them first — whichever branch or salesman that was.
+ * Walk-ins (no phone, so no customer record) and voided bills are skipped, so a customer whose first
+ * bill was cancelled counts again on their next one. Earliest date wins, lowest id breaks a tie,
+ * which keeps backdated rows (demo data) right.
+ *
+ * Costs no extra reading: every caller has already read the Sales sheet this request.
+ */
+function firstBillByCustomer_() {
+    if (REQ_CACHE_.__firstBill) return REQ_CACHE_.__firstBill;
+    const best = {};
+    rows_("Sales").forEach((s) => {
+        if (!s.customer_id || s.status === "voided") return;
+        const cur = best[s.customer_id];
+        if (!cur || s.date < cur.date || (s.date === cur.date && s.id < cur.id)) best[s.customer_id] = { id: s.id, date: s.date };
+    });
+    const first = {};
+    Object.keys(best).forEach((k) => (first[k] = best[k].id));
+    return (REQ_CACHE_.__firstBill = first);
+}
+
+function isNewCustomer_(sale, first) {
+    return !!sale.customer_id && first[sale.customer_id] === sale.id;
+}
+
+// items as billed (pcs count their qty, a loose-ml line counts as 1) — not reduced by later returns
+function itemsOf_(sales) {
+    return r3_(sales.reduce((a, s) => a + s.items, 0));
+}
+
+function newCustomersIn_(sales) {
+    const first = firstBillByCustomer_();
+    return sales.filter((s) => isNewCustomer_(s, first)).length;
+}
+
 /* ---------- dashboard ---------- */
 
 function apiDashboard_(p, ctx) {
@@ -99,6 +137,8 @@ function apiDashboard_(p, ctx) {
     const data = {
         today: {
             bills: tSales.length,
+            items: itemsOf_(tSales),
+            new_customers: newCustomersIn_(tSales),
             sales: todayGross,
             returns: todayReturns,
             net: r2_(todayGross - todayReturns),
@@ -130,11 +170,15 @@ function apiDashboard_(p, ctx) {
 
 function leaderboard_(sales, returns, from, to) {
     const m = {};
-    const row = (id, name) => (m[id] = m[id] || { salesman_id: id, name: name || "", bills: 0, sales: 0, returns: 0, net: 0 });
+    const row = (id, name) =>
+        (m[id] = m[id] || { salesman_id: id, name: name || "", bills: 0, items: 0, new_customers: 0, sales: 0, returns: 0, net: 0 });
+    const first = firstBillByCustomer_();
     sales.forEach((s) => {
         if (!inRange_(s.date, from, to)) return;
         const r = row(s.salesman_id, s.salesman_name);
         r.bills++;
+        r.items = r3_(r.items + s.items);
+        if (isNewCustomer_(s, first)) r.new_customers++;
         r.sales = r2_(r.sales + s.grand_total);
     });
     const users = indexBy_(rows_("Users"), "id");
@@ -255,16 +299,16 @@ function reportSalesmen_(p, ctx) {
     const { sales, returns } = scope_(ctx);
     const rs = sales.filter((s) => inRange_(s.date, from, to));
     const base = leaderboard_(sales, returns, from, to);
+    // items and new customers come from leaderboard_ already; this adds what only this report shows
     const extra = {};
     rs.forEach((s) => {
-        const e = (extra[s.salesman_id] = extra[s.salesman_id] || { items: 0, discount: 0, gross: 0 });
-        e.items = r3_(e.items + s.items);
+        const e = (extra[s.salesman_id] = extra[s.salesman_id] || { discount: 0, gross: 0 });
         e.discount = r2_(e.discount + s.item_disc + s.bill_disc);
         e.gross = r2_(e.gross + s.gross);
     });
     return {
         from, to,
-        rows: base.map((r) => Object.assign(r, extra[r.salesman_id] || { items: 0, discount: 0, gross: 0 })),
+        rows: base.map((r) => Object.assign(r, extra[r.salesman_id] || { discount: 0, gross: 0 })),
     };
 }
 
