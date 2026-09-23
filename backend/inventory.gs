@@ -180,15 +180,18 @@ function apiTransferStock_(p, ctx) {
 
 function apiListTransfers_(p, ctx) {
     const users = indexBy_(rows_("Users"), "id");
+    const list = tailRows_("Transfers", 1000)
+        .filter((t) => !ctx.branch_id || t.from_branch_id === ctx.branch_id || t.to_branch_id === ctx.branch_id)
+        .slice(-200);
+    // what moved on each one: only the movements written since the oldest transfer shown, instead of
+    // every stock movement the shop has ever recorded
     const out = {};
-    rows_("Stock_Movements").forEach((m) => {
+    (list.length ? windowRows_("Stock_Movements", "at", String(list[0].at).slice(0, 10), null) : []).forEach((m) => {
         if (m.ref_type !== "transfer" || m.type !== "transfer_out") return;
         (out[m.ref_id] = out[m.ref_id] || []).push({ variant_id: m.variant_id, qty: -m.qty });
     });
     return {
-        data: rows_("Transfers")
-            .filter((t) => !ctx.branch_id || t.from_branch_id === ctx.branch_id || t.to_branch_id === ctx.branch_id)
-            .slice(-200)
+        data: list
             .reverse()
             .map((t) => ({
                 id: t.id, transfer_no: t.transfer_no, from_branch_id: t.from_branch_id, to_branch_id: t.to_branch_id,
@@ -204,15 +207,16 @@ function apiListTransfers_(p, ctx) {
 function apiMovements_(p, ctx) {
     const vid = Number(p.variant_id || 0);
     const users = indexBy_(rows_("Users"), "id");
-    let rows = rows_("Stock_Movements").filter((m) => inBranch_(ctx, m.branch_id));
-    if (vid) rows = rows.filter((m) => m.variant_id === vid);
+    const lim = num_(p.limit, 300);
+    let rows = vid ? lastMatchingRows_("Stock_Movements", "variant_id", vid, lim, 1500) : tailRows_("Stock_Movements", lim * 4);
+    rows = rows.filter((m) => inBranch_(ctx, m.branch_id));
     if (p.from) rows = rows.filter((m) => m.at.slice(0, 10) >= p.from);
     if (p.to) rows = rows.filter((m) => m.at.slice(0, 10) <= p.to);
     if (p.type) rows = rows.filter((m) => m.type === p.type);
     const showCost = isStaffManager_(ctx);
     return {
         data: rows
-            .slice(-num_(p.limit, 300))
+            .slice(-lim)
             .reverse()
             .map((m) => ({
                 id: m.id, variant_id: m.variant_id, type: m.type, qty: m.qty, balance: m.balance,
@@ -226,7 +230,7 @@ function apiMovements_(p, ctx) {
 function apiStockInBatches_(p, ctx) {
     const users = indexBy_(rows_("Users"), "id");
     return {
-        data: rows_("Stock_In_Batches")
+        data: tailRows_("Stock_In_Batches", 1000)
             .filter((b) => inBranch_(ctx, b.branch_id))
             .slice(-200)
             .reverse()

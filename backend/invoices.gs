@@ -258,8 +258,8 @@ function invoicePdfHtml_(d) {
 function creditNoteHtml_(r) {
     const e = escHtml_;
     const sale = findBy_("Sales", "id", r.sale_id) || {};
-    const saleItems = indexBy_(rows_("Sale_Items").filter((i) => i.sale_id === r.sale_id), "id");
-    const items = rows_("Return_Items").filter((x) => x.return_id === r.id);
+    const saleItems = indexBy_(windowRows_("Sale_Items", "sale_id", r.sale_id, r.sale_id), "id");
+    const items = windowRows_("Return_Items", "return_id", r.id, r.id);
     const rows2 = items
         .map((x, n) => {
             const si = saleItems[x.sale_item_id] || {};

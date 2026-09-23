@@ -8,10 +8,12 @@ function canSeeSale_(ctx, s) {
 
 function saleDetail_(s, ctx) {
     const hideCost = !ctx || ctx.user.role === "salesman"; // cost prices are for managers only
-    const items = rows_("Sale_Items").filter((i) => i.sale_id === s.id);
-    const pays = rows_("Payments").filter((x) => x.sale_id === s.id);
-    const rets = rows_("Returns").filter((r) => r.sale_id === s.id);
-    const retItems = rows_("Return_Items");
+    // one bill's lines, not every line ever sold: both tables are written in bill order, so the
+    // rows for this bill sit together and can be read as a small block
+    const items = windowRows_("Sale_Items", "sale_id", s.id, s.id);
+    const pays = windowRows_("Payments", "sale_id", s.id, s.id);
+    const rets = windowRows_("Returns", "sale_id", s.id, s.id);
+    const retItems = rets.length ? windowRows_("Return_Items", "return_id", rets[0].id, rets[rets.length - 1].id) : [];
     const strip = (o) => {
         const c = Object.assign({}, o);
         delete c._r;
@@ -175,7 +177,8 @@ function apiCompleteSale_(p, ctx) {
 function apiListSales_(p, ctx) {
     const from = str_(p.from) || todayStr_();
     const to = str_(p.to) || todayStr_();
-    let rows = rows_("Sales").filter((s) => s.date.slice(0, 10) >= from && s.date.slice(0, 10) <= to);
+    // only the bills in the range are read off the sheet, not the whole history
+    let rows = windowRows_("Sales", "date", from, to);
     if (ctx.user.role === "salesman") rows = rows.filter((s) => s.salesman_id === ctx.user.id);
     else {
         rows = rows.filter((s) => inBranch_(ctx, s.branch_id));
@@ -190,7 +193,9 @@ function apiListSales_(p, ctx) {
     const ids = {};
     rows.forEach((s) => (ids[s.id] = true));
     const methods = {};
-    rows_("Payments").forEach((x) => {
+    // payments are written bill by bill, so the ones for these bills sit in one block
+    const payRows = rows.length ? windowRows_("Payments", "sale_id", rows[0].id, rows[rows.length - 1].id) : [];
+    payRows.forEach((x) => {
         if (!ids[x.sale_id] || x.amount <= 0) return;
         methods[x.sale_id] = methods[x.sale_id] || {};
         methods[x.sale_id][x.method] = true;
@@ -217,7 +222,7 @@ function apiListSales_(p, ctx) {
 }
 
 function apiGetSale_(p, ctx) {
-    const s = p.id ? findBy_("Sales", "id", Number(p.id)) : findBy_("Sales", "invoice_no", str_(p.invoice_no));
+    const s = p.id ? findById_("Sales", p.id) : findBy_("Sales", "invoice_no", str_(p.invoice_no));
     if (!s) fail_("Bill not found");
     if (!canSeeSale_(ctx, s)) fail_("You can only view your own bills");
     return { data: saleDetail_(s, ctx) };

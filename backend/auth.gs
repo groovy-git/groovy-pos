@@ -228,8 +228,9 @@ function apiChangePassword_(p, ctx) {
 /* ---------- user management (admin) ---------- */
 
 function apiListUsers_(p, ctx) {
+    // just the salesman column — the rest of the bill is not needed to answer "has any?"
     const sold = {};
-    rows_("Sales").forEach((s) => (sold[s.salesman_id] = true));
+    columnValues_("Sales", "salesman_id").forEach((v) => (sold[v] = true));
     return {
         data: rows_("Users").map((u) =>
             Object.assign(publicUser_(u), {
@@ -320,7 +321,7 @@ function apiDeleteUser_(p, ctx) {
         const u = findBy_("Users", "id", Number(p.id));
         if (!u) fail_("User not found");
         if (u.id === ctx.user.id) fail_("You cannot delete yourself");
-        if (rows_("Sales").some((s) => s.salesman_id === u.id || s.created_by === u.id))
+        if (columnValues_("Sales", "salesman_id").some((v) => v === u.id) || columnValues_("Sales", "created_by").some((v) => v === u.id))
             fail_("This user has sales. Deactivate instead so sales history stays intact.");
         endUserSessions_(u.id);
         deleteRow_("Users", findBy_("Users", "id", u.id));

@@ -150,7 +150,9 @@ function log_(ctx, action, entity, refId, details) {
 function apiListLogs_(p, ctx) {
     const lim = Math.min(num_(p.limit, 300), 1000);
     const q = str_(p.q).toLowerCase();
-    let rows = rows_("Activity_Logs").slice().reverse();
+    // the newest rows are all this screen shows; a search looks back further but still not
+    // through every line ever logged
+    let rows = tailRows_("Activity_Logs", q ? Math.max(5000, lim) : lim).reverse();
     if (q)
         rows = rows.filter((r) =>
             (r.user_name + " " + r.action + " " + r.entity + " " + r.details).toLowerCase().indexOf(q) >= 0,

@@ -225,7 +225,9 @@ function createEnv() {
         CacheService: {
             getScriptCache: () => ({
                 get: (k) => (cache.has(k) ? cache.get(k) : null),
+                getAll: (keys) => { const o = {}; keys.forEach((k) => { if (cache.has(k)) o[k] = cache.get(k); }); return o; },
                 put: (k, v) => cache.set(k, v),
+                putAll: (map) => Object.keys(map).forEach((k) => cache.set(k, map[k])),
                 remove: (k) => cache.delete(k),
                 removeAll: (keys) => keys.forEach((k) => cache.delete(k)),
             }),

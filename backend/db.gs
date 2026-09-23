@@ -73,21 +73,139 @@ function readTable_(name) {
         throw outdated(); // sheet has fewer columns than this version needs
     }
     if (String(vals[0][keys.length - 1]) !== keys[keys.length - 1]) throw outdated();
-    const rows = [];
-    for (let i = 1; i < vals.length; i++) {
-        const raw = vals[i];
-        if (raw[0] === "" && raw.every((c) => c === "")) continue;
-        const o = { _r: i + 1 };
-        for (let k = 0; k < keys.length; k++) o[keys[k]] = fromCell_(raw[k], schema[keys[k]]);
-        rows.push(o);
-    }
-    const t = { name, sh, keys, rows };
+    const t = { name, sh, keys, rows: rowsFromValues_(name, vals.slice(1), 2) };
     REQ_CACHE_[name] = t;
     return t;
 }
 
+// raw cell rows → records, the way readTable_ does it; firstRow is the sheet row of vals[0]
+function rowsFromValues_(name, vals, firstRow) {
+    const schema = SCHEMA[name];
+    const keys = Object.keys(schema);
+    const rows = [];
+    for (let i = 0; i < vals.length; i++) {
+        const raw = vals[i];
+        if (raw[0] === "" && raw.every((c) => c === "")) continue;
+        const o = { _r: firstRow + i };
+        for (let k = 0; k < keys.length; k++) o[keys[k]] = fromCell_(raw[k], schema[keys[k]]);
+        rows.push(o);
+    }
+    return rows;
+}
+
 function rows_(name) {
     return readTable_(name).rows;
+}
+
+/**
+ * Reading less of a sheet.
+ *
+ * A sheet read costs roughly its cells, and these tables only ever grow: by the thousandth bill,
+ * "today's sales" was reading every bill ever written, 30 columns wide. The helpers below read a
+ * slice instead. Each one falls back to the whole table when it is already in the request cache
+ * (no second read is cheaper than none) and checks the header of the column it reads, so a sheet
+ * that hasn't been repaired after an update still gives the "run Setup" message rather than
+ * silently reading the wrong column.
+ */
+function headerCell_(sh, name, field) {
+    const keys = cols_(name);
+    const c = keys.indexOf(field) + 1;
+    if (c < 1) throw new Error("Unknown column " + field + " on " + name);
+    if (String(sh.getRange(1, c).getValue()) !== field)
+        throw new AppError_("The app was updated — open the Google Sheet and run Groovy POS → 1. Setup / repair sheets.", "SETUP");
+    return c;
+}
+
+/** The newest n rows — for lists that show the latest first (logs, batches, movements). */
+function tailRows_(name, n) {
+    if (REQ_CACHE_[name]) return REQ_CACHE_[name].rows.slice(-n);
+    const sh = sheet_(name);
+    const keys = cols_(name);
+    const last = sh.getLastRow();
+    if (last < 2) return [];
+    headerCell_(sh, name, keys[keys.length - 1]);
+    const start = Math.max(2, last - n + 1);
+    return rowsFromValues_(name, sh.getRange(start, 1, last - start + 1, keys.length).getValues(), start);
+}
+
+/** One column's values, in sheet order — for "has this branch ever sold anything" style questions. */
+function columnValues_(name, field) {
+    if (REQ_CACHE_[name]) return REQ_CACHE_[name].rows.map((r) => r[field]);
+    const sh = sheet_(name);
+    const last = sh.getLastRow();
+    if (last < 2) return [];
+    const c = headerCell_(sh, name, field);
+    const type = SCHEMA[name][field];
+    return sh.getRange(2, c, last - 1, 1).getValues().map((r) => fromCell_(r[0], type));
+}
+
+/**
+ * The last n rows where `field` equals value — a product's recent stock movements, say.
+ *
+ * Almost always the answer is in the recent rows, so it reads a tail block first and only goes
+ * looking through the column when that turns up nothing (a product last touched long ago).
+ */
+function lastMatchingRows_(name, field, value, n, tail) {
+    if (REQ_CACHE_[name]) return REQ_CACHE_[name].rows.filter((r) => r[field] === value).slice(-n);
+    const recent = tailRows_(name, tail || 2000).filter((r) => r[field] === value);
+    if (recent.length) return recent.slice(-n);
+    const col = columnValues_(name, field);
+    let start = -1;
+    let found = 0;
+    for (let i = col.length - 1; i >= 0 && found < n; i--) {
+        if (col[i] !== value) continue;
+        found++;
+        start = i;
+    }
+    if (start < 0) return [];
+    const sh = sheet_(name);
+    const keys = cols_(name);
+    const first = start + 2;
+    return rowsFromValues_(name, sh.getRange(first, 1, col.length - start, keys.length).getValues(), first)
+        .filter((r) => r[field] === value)
+        .slice(-n);
+}
+
+/** One row by id, without reading the whole table to find it. */
+function findById_(name, id) {
+    const n = Number(id);
+    if (!n) return null;
+    const hit = windowRows_(name, "id", n, n);
+    return hit.length ? hit[0] : null;
+}
+
+/**
+ * The rows whose `field` falls between from and to (inclusive), read as one block.
+ *
+ * The block runs from the first matching row to the last, so rows that are out of order — a
+ * back-dated import, a sheet someone sorted by hand — are still all inside it and nothing is
+ * missed; the worst case is simply the whole table, which is what it read before anyway.
+ */
+function windowRows_(name, field, from, to) {
+    // "2026-09-23 12:00:00" has to count as inside a range that ends on "2026-09-23", so a text value
+    // is compared only as far as the bound is long. Numbers (an id window) compare as they are.
+    const cut = (v, bound) => (typeof v === "string" && typeof bound === "string" ? v.slice(0, bound.length) : v);
+    const within = (v0) => {
+        const v = v0 instanceof Date ? fmtDateTime_(v0) : v0;
+        if (from !== null && from !== undefined && cut(v, from) < from) return false;
+        if (to !== null && to !== undefined && cut(v, to) > to) return false;
+        return true;
+    };
+    if (REQ_CACHE_[name]) return REQ_CACHE_[name].rows.filter((r) => within(r[field]));
+    const col = columnValues_(name, field);
+    let first = -1;
+    let last = -1;
+    for (let i = 0; i < col.length; i++) {
+        if (!within(col[i])) continue;
+        if (first < 0) first = i;
+        last = i;
+    }
+    if (first < 0) return [];
+    const sh = sheet_(name);
+    const keys = cols_(name);
+    const start = first + 2; // +1 for the header, +1 for 1-based rows
+    const rows = rowsFromValues_(name, sh.getRange(start, 1, last - first + 1, keys.length).getValues(), start);
+    return rows.filter((r) => within(r[field]));
 }
 
 function indexBy_(rows, key) {

@@ -349,10 +349,17 @@ check("still running → IN_PROGRESS", call("stockIn", { lines: [{ variant_id: v
 const rqBad = call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 0 }] }, T, 1, "req-test-0004");
 const rqBad2 = call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 3 }] }, T, 1, "req-test-0004");
 check("failed try is not remembered", !rqBad.success && rqBad2.success && rqStock() === rq0 + 7, { rqBad, rqBad2 });
+// a retried read (same req_id, because Google lost the first reply) is answered from the saved
+// reply instead of running the whole query again — that retry used to cost another full read
 const rqR1 = call("getCatalog", {}, T, 1, "req-test-0005");
 call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 1 }] }, T, 1, "req-test-0006");
+const rqStockNow = () => rqStock();
 const rqR2 = call("getCatalog", {}, T, 1, "req-test-0005");
-check("reads are never replayed", rqR2.data.variants.find((v) => v.id === vBottle.id).stock_qty === rqR1.data.variants.find((v) => v.id === vBottle.id).stock_qty + 1);
+const qty = (r) => r.data.variants.find((v) => v.id === vBottle.id).stock_qty;
+check("a retried read replays its saved reply", qty(rqR2) === qty(rqR1), { first: qty(rqR1), retry: qty(rqR2), now: rqStockNow() });
+// a fresh request (its own req_id) always sees the new figures
+const rqR3 = call("getCatalog", {}, T, 1, "req-test-0007");
+check("a new read sees the change", qty(rqR3) === qty(rqR1) + 1, { first: qty(rqR1), fresh: qty(rqR3) });
 check("no req_id works as before", call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 1 }] }, T, 1).success && rqStock() === rq0 + 9);
 check("bad req_id ignored", call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 1 }] }, T, 1, "x").success && rqStock() === rq0 + 10);
 
@@ -1025,6 +1032,105 @@ check("demo seeded", /Demo data loaded/.test(demoMsg), demoMsg);
 const bills = /(\d+) bills/.exec(demoMsg)[1];
 const salesRows = env2.ctx.rows_("Sales").length;
 check("demo sales saved", salesRows > 20, { salesRows, bills });
+
+// ---- reading less of the sheet: block and tail reads must return exactly what a full read would ----
+// (own env, so the row order can be meddled with safely)
+const wrenvR2 = createEnv();
+wrenvR2.ctx.setupSheets();
+const wrrPwd = /Password: (\S+)/.exec(wrenvR2.alerts.pop())[1];
+const wrRT = wrenvR2.call("login", { email: "owner@groovy.test", password: wrrPwd }).data.token;
+const wrrCat = wrenvR2.call("bootstrap", {}, wrRT).data.catalog.categories[0].id;
+wrenvR2.call("saveProduct", {
+    name: "Window Tester", category_id: wrrCat, gst_rate: 18,
+    variants: [{ size_label: "10ml", mrp: 100, sell_price: 100, cost: 40, opening_stock: 500, barcode: "WIN0001" }],
+}, wrRT);
+const wrrVid = wrenvR2.call("getCatalog", {}, wrRT).data.variants.find((v) => v.barcode === "WIN0001").id;
+const wrrOwner = wrenvR2.ctx.findBy_("Users", "email", "owner@groovy.test");
+const wrrBill = (ref, at) =>
+    wrenvR2.ctx.apiCompleteSale_(
+        { client_ref: ref, lines: [{ variant_id: wrrVid, qty: 1 }], payments: [{ method: "cash", amount: 100 }], _at: at },
+        { user: wrrOwner, token: "", branch_id: 1 },
+    ).data.sale;
+// three days of bills, then one written out of order (an older date appended last, as an import would)
+wrrBill("w-1", "2026-03-01 09:00:00");
+const wrrMid = wrrBill("w-2", "2026-03-02 23:59:59");
+const wrrLast = wrrBill("w-3", "2026-03-03 00:00:00");
+const wrrOld = wrrBill("w-4", "2026-03-02 08:00:00");
+const wrrList = (from, to) => wrenvR2.call("listSales", { from, to }, wrRT).data.sales.map((s) => s.invoice_no);
+check("window read: one day, both ends of the clock", wrrList("2026-03-02", "2026-03-02").length === 2, wrrList("2026-03-02", "2026-03-02"));
+check("window read: a row written out of order is still found", wrrList("2026-03-02", "2026-03-02").indexOf(wrrOld.invoice_no) >= 0, wrrOld.invoice_no);
+check("window read: a date with nothing on it", wrrList("2026-02-01", "2026-02-01").length === 0);
+check("window read: the whole range matches a full scan", wrrList("2026-03-01", "2026-03-03").length === 4, wrrList("2026-03-01", "2026-03-03"));
+check("window read: boundaries are inclusive", wrrList("2026-03-03", "2026-03-03")[0] === wrrLast.invoice_no, wrrList("2026-03-03", "2026-03-03"));
+// one bill's detail must carry only its own lines
+const wrrDetail = wrenvR2.call("getSale", { id: wrrMid.id }, wrRT).data;
+check("block read: a bill's lines are its own", wrrDetail.items.length === 1 && wrrDetail.items.every((i) => i.sale_id === wrrMid.id), wrrDetail.items);
+check("block read: a bill's payments are its own", wrrDetail.payments.length > 0 && wrrDetail.payments.every((x) => x.sale_id === wrrMid.id), wrrDetail.payments);
+// a day close over out-of-order rows still totals every bill of that day
+const wrrDc = wrenvR2.call("report", { type: "day_close", date: "2026-03-02" }, wrRT).data;
+check("day close covers out-of-order rows", wrrDc.bills === 2 && Math.abs(wrrDc.sales - 200) < 0.01, { bills: wrrDc.bills, sales: wrrDc.sales });
+// the newest log lines, in order, however many there are
+for (let i = 0; i < 40; i++) wrenvR2.ctx.log_({ user: { id: 1, name: "Owner" } }, "TEST", "Bench", i, "line " + i);
+const wrrLogs = wrenvR2.call("listLogs", { limit: 10 }, wrRT).data;
+check("tail read: newest logs first", wrrLogs.length === 10 && wrrLogs[0].details === "line 39" && wrrLogs[9].details === "line 30", wrrLogs.map((l) => l.details));
+check("tail read: a search still looks past the newest rows", wrenvR2.call("listLogs", { q: "line 3", limit: 300 }, wrRT).data.length >= 11);
+// a product whose last movement is older than the tail window is still found (the fallback path)
+for (let i = 0; i < 60; i++)
+    wrenvR2.ctx.appendRows_("Stock_Movements", [{
+        id: wrenvR2.ctx.nextId_("Stock_Movements"), variant_id: 9999, type: "adjust", qty: 1, unit_cost: 0, balance: i,
+        ref_type: "test", ref_id: String(i), note: "filler", user_id: 1, at: "2026-03-04 10:00:00", branch_id: 1,
+    }]);
+const wrrMoves = wrenvR2.call("movements", { variant_id: wrrVid, limit: 50 }, wrRT).data;
+check("tail read: an older product's history is still found", wrrMoves.length > 0 && wrrMoves.every((m) => m.variant_id === wrrVid), wrrMoves.length);
+// one customer's bills, found without reading every bill
+const wrrCust = wrenvR2.call("saveCustomer", { name: "Window Cust", phone: "9876500123" }, wrRT).data;
+wrwrrBill2 = wrenvR2.ctx.apiCompleteSale_(
+    { client_ref: "w-5", lines: [{ variant_id: wrrVid, qty: 1 }], payments: [{ method: "cash", amount: 100 }], customer: { phone: "9876500123" } },
+    { user: wrrOwner, token: "", branch_id: 1 },
+).data.sale;
+const rHist = wrenvR2.call("customerHistory", { id: wrrCust.id }, wrRT).data;
+check("block read: a customer's own bills", rHist.sales.length === 1 && rHist.sales[0].invoice_no === wrwrrBill2.invoice_no, rHist.sales);
+
+// ---- the kept copy of the catalogue must never be the stale one ----
+const ccPrice = () => envR2c.call("getCatalog", {}, CCT).data.variants.find((v) => v.barcode === "CC0001").sell_price;
+const envR2c = createEnv();
+envR2c.ctx.setupSheets();
+const ccPwd = /Password: (\S+)/.exec(envR2c.alerts.pop())[1];
+const CCT = envR2c.call("login", { email: "owner@groovy.test", password: ccPwd }).data.token;
+const ccCat = envR2c.call("bootstrap", {}, CCT).data.catalog.categories[0].id;
+const ccProd = envR2c.call("saveProduct", {
+    name: "Cache Tester", category_id: ccCat, gst_rate: 18,
+    variants: [{ size_label: "20ml", mrp: 500, sell_price: 400, cost: 100, opening_stock: 10, barcode: "CC0001" }],
+}, CCT).data;
+check("catalogue: first read", ccPrice() === 400, ccPrice());
+check("catalogue: second read is the same", ccPrice() === 400, ccPrice());
+// a price change must show up at once, cache or no cache
+const ccVar = envR2c.call("getCatalog", {}, CCT).data.variants.find((v) => v.barcode === "CC0001");
+envR2c.call("saveProduct", {
+    id: ccProd.id, name: "Cache Tester", category_id: ccCat, gst_rate: 18,
+    variants: [{ id: ccVar.id, size_label: "20ml", mrp: 500, sell_price: 450, barcode: "CC0001" }],
+}, CCT);
+check("catalogue: a price change is picked up immediately", ccPrice() === 450, ccPrice());
+// a name change too, and the product count stays right
+envR2c.call("saveProduct", {
+    id: ccProd.id, name: "Cache Tester Renamed", category_id: ccCat, gst_rate: 18,
+    variants: [{ id: ccVar.id, size_label: "20ml", mrp: 500, sell_price: 450, barcode: "CC0001" }],
+}, CCT);
+const ccAfter = envR2c.call("getCatalog", {}, CCT).data;
+check("catalogue: a rename is picked up immediately", ccAfter.products.some((p) => p.name === "Cache Tester Renamed"), ccAfter.products.map((p) => p.name));
+check("catalogue: nothing is duplicated or lost", ccAfter.variants.filter((v) => v.barcode === "CC0001").length === 1, ccAfter.variants.length);
+// stock is never taken from the kept copy: selling one must show one fewer straight away
+const ccOwner = envR2c.ctx.findBy_("Users", "email", "owner@groovy.test");
+envR2c.ctx.apiCompleteSale_(
+    { client_ref: "cc-1", lines: [{ variant_id: ccVar.id, qty: 1 }], payments: [{ method: "cash", amount: 450 }] },
+    { user: ccOwner, token: "", branch_id: 1 },
+);
+check("catalogue: stock is current even when the rest is kept", envR2c.call("getCatalog", {}, CCT).data.variants.find((v) => v.barcode === "CC0001").stock_qty === 9,
+    envR2c.call("getCatalog", {}, CCT).data.variants.find((v) => v.barcode === "CC0001").stock_qty);
+// a salesman still never sees cost prices, even though the kept copy holds them
+envR2c.call("saveUser", { name: "Cache Salesman", email: "cs@x.in", role: "salesman", password: "secret9" }, CCT);
+const CST = envR2c.call("login", { email: "cs@x.in", password: "secret9" }).data.token;
+check("catalogue: cost stays hidden from a salesman", envR2c.call("getCatalog", {}, CST).data.variants.every((v) => v.avg_cost === undefined));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

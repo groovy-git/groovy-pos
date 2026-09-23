@@ -170,8 +170,9 @@ function branchCode_(branchId) {
 /* ---------- branch management (admin) ---------- */
 
 function apiListBranches_(p, ctx) {
+    // one column instead of every bill ever written, 30 columns wide
     const sold = {};
-    rows_("Sales").forEach((s) => (sold[bid_(s.branch_id)] = true));
+    columnValues_("Sales", "branch_id").forEach((v) => (sold[bid_(v)] = true));
     return {
         data: rows_("Branches").map((b) =>
             Object.assign(branchOut_(b), { report_emails: b.report_emails, has_sales: !!sold[b.id] }),
@@ -199,7 +200,7 @@ function apiSaveBranch_(p, ctx) {
         if (p.id) {
             const b = findBy_("Branches", "id", Number(p.id));
             if (!b) fail_("Branch not found");
-            if (str_(b.code) !== code && rows_("Sales").some((s) => bid_(s.branch_id) === b.id))
+            if (str_(b.code) !== code && columnValues_("Sales", "branch_id").some((v) => bid_(v) === b.id))
                 fail_("This branch already has bills — its code (bill number series) can't change");
             const active = p.active === undefined ? b.active : p.active ? 1 : 0;
             if (!active && all.filter((x) => x.active && x.id !== b.id).length === 0) fail_("At least one branch must stay active");

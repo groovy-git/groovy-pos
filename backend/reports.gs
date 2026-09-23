@@ -19,16 +19,47 @@ function rangeOf_(p) {
     return { from, to };
 }
 
-// scoped data for the caller (salesman sees only own)
-function scope_(ctx) {
+/**
+ * Scoped data for the caller (a salesman sees only their own).
+ *
+ * `from`/`to` limit what is read off the sheet — a report about one day should not read five years
+ * of bills. Leaving them out reads everything, as before.
+ */
+function scope_(ctx, from, to) {
     const own = ctx.user.role === "salesman" ? ctx.user.id : 0;
-    const sales = rows_("Sales").filter((s) => s.status !== "voided" && (!own || s.salesman_id === own) && inBranch_(ctx, s.branch_id));
-    const returns = rows_("Returns").filter((r) => (!own || r.salesman_id === own) && inBranch_(ctx, r.branch_id));
+    const saleRows = from || to ? windowRows_("Sales", "date", from || null, to || null) : rows_("Sales");
+    const returnRows = from || to ? windowRows_("Returns", "at", from || null, to || null) : rows_("Returns");
+    const sales = saleRows.filter((s) => s.status !== "voided" && (!own || s.salesman_id === own) && inBranch_(ctx, s.branch_id));
+    const returns = returnRows.filter((r) => (!own || r.salesman_id === own) && inBranch_(ctx, r.branch_id));
     return { own, sales, returns };
 }
 
 function sumBy_(rows, f) {
     return r2_(rows.reduce((a, r) => a + (typeof f === "function" ? f(r) : r[f]), 0));
+}
+
+/** The lines of these credit notes — same idea as saleItemsFor_. */
+function returnItemsFor_(returnIds) {
+    if (!returnIds.length) return [];
+    let lo = returnIds[0];
+    let hi = returnIds[0];
+    returnIds.forEach((id) => {
+        if (id < lo) lo = id;
+        if (id > hi) hi = id;
+    });
+    return windowRows_("Return_Items", "return_id", lo, hi);
+}
+
+/** The sale lines belonging to these bills — one block read instead of every line ever sold. */
+function saleItemsFor_(saleIds) {
+    if (!saleIds.length) return [];
+    let lo = saleIds[0];
+    let hi = saleIds[0];
+    saleIds.forEach((id) => {
+        if (id < lo) lo = id;
+        if (id > hi) hi = id;
+    });
+    return windowRows_("Sale_Items", "sale_id", lo, hi);
 }
 
 /**
@@ -45,7 +76,14 @@ function sumBy_(rows, f) {
 function firstBillByCustomer_() {
     if (REQ_CACHE_.__firstBill) return REQ_CACHE_.__firstBill;
     const best = {};
-    rows_("Sales").forEach((s) => {
+    // this one genuinely needs every bill ever — but only four of the thirty columns, so it reads
+    // those four rather than the whole sheet
+    const id = columnValues_("Sales", "id");
+    const date = columnValues_("Sales", "date");
+    const customer = columnValues_("Sales", "customer_id");
+    const status = columnValues_("Sales", "status");
+    id.forEach((_, i) => {
+        const s = { id: id[i], date: date[i], customer_id: customer[i], status: status[i] };
         if (!s.customer_id || s.status === "voided") return;
         const cur = best[s.customer_id];
         if (!cur || s.date < cur.date || (s.date === cur.date && s.id < cur.id)) best[s.customer_id] = { id: s.id, date: s.date };
@@ -74,7 +112,10 @@ function newCustomersIn_(sales) {
 function apiDashboard_(p, ctx) {
     const today = todayStr_();
     const monthStart = today.slice(0, 8) + "01";
-    const { own, sales, returns } = scope_(ctx);
+    // everything on this screen looks back at most 30 days (the trend) or to the start of the month,
+    // so that is all that is read
+    const since = monthStart < daysAgoStr_(29) ? monthStart : daysAgoStr_(29);
+    const { own, sales, returns } = scope_(ctx, since, today);
     const saleIds = {};
     sales.forEach((s) => (saleIds[s.id] = true));
 
@@ -85,7 +126,7 @@ function apiDashboard_(p, ctx) {
 
     const payToday = {};
     PAYMENT_METHODS.forEach((m) => (payToday[m] = 0));
-    rows_("Payments").forEach((x) => {
+    windowRows_("Payments", "at", today, today).forEach((x) => {
         if (d10_(x.at) !== today) return;
         if (!saleIds[x.sale_id]) return; // other salesman's, or a voided bill (payment + reversal both skipped)
         payToday[x.method] = r2_((payToday[x.method] || 0) + x.amount);
@@ -112,7 +153,8 @@ function apiDashboard_(p, ctx) {
     const mSaleIds = {};
     sales.filter((s) => d10_(s.date) >= monthStart).forEach((s) => (mSaleIds[s.id] = true));
     const top = {};
-    rows_("Sale_Items").forEach((i) => {
+    // the lines of this month's bills, found by their bill numbers instead of reading every line ever
+    saleItemsFor_(Object.keys(mSaleIds).map(Number)).forEach((i) => {
         if (!mSaleIds[i.sale_id]) return;
         const q = i.qty - i.returned_qty;
         if (q <= 0) return;
@@ -225,7 +267,7 @@ function daySoldItems_(daySales, branchId) {
     const ids = {};
     daySales.forEach((s) => (ids[s.id] = true));
     const agg = {};
-    rows_("Sale_Items").forEach((i) => {
+    saleItemsFor_(daySales.map((s) => s.id)).forEach((i) => {
         if (!ids[i.sale_id]) return;
         const q = r3_(i.qty - i.returned_qty);
         if (q <= 0) return;
@@ -251,14 +293,25 @@ function daySoldItems_(daySales, branchId) {
 
 function reportDayClose_(p, ctx) {
     const date = str_(p.date) || todayStr_();
-    const { own, sales, returns } = scope_(ctx);
-    const saleMap = indexBy_(rows_("Sales"), "id");
+    const { own, sales, returns } = scope_(ctx, date, date);
     const daySales = sales.filter((s) => d10_(s.date) === date);
     const dayRets = returns.filter((r) => d10_(r.at) === date);
 
+    // money taken today can belong to an older bill (a refund on last week's sale), so the bills
+    // behind today's payments are read by id — still a block, not the whole book
+    const dayPays = windowRows_("Payments", "at", date, date);
+    let lo = 0;
+    let hi = 0;
+    dayPays.forEach((x) => {
+        if (!x.sale_id) return;
+        lo = lo ? Math.min(lo, x.sale_id) : x.sale_id;
+        hi = Math.max(hi, x.sale_id);
+    });
+    const saleMap = lo ? indexBy_(windowRows_("Sales", "id", lo, hi), "id") : {};
+
     const methods = {};
     PAYMENT_METHODS.forEach((m) => (methods[m] = { in: 0, out: 0, net: 0 }));
-    rows_("Payments").forEach((x) => {
+    dayPays.forEach((x) => {
         if (d10_(x.at) !== date) return;
         const s = saleMap[x.sale_id];
         if (!s) return;
@@ -273,7 +326,9 @@ function reportDayClose_(p, ctx) {
     const cashExpenses = own
         ? 0
         : sumBy_(rows_("Expenses").filter((e) => e.date === date && e.method === "cash" && inBranch_(ctx, e.branch_id)), "amount");
-    const voided = rows_("Sales").filter((s) => s.status === "voided" && d10_(s.date) === date && (!own || s.salesman_id === own) && inBranch_(ctx, s.branch_id));
+    const voided = windowRows_("Sales", "date", date, date).filter(
+        (s) => s.status === "voided" && (!own || s.salesman_id === own) && inBranch_(ctx, s.branch_id),
+    );
     return {
         date,
         bills: daySales.length,
@@ -296,7 +351,7 @@ function reportDayClose_(p, ctx) {
 
 function reportSalesmen_(p, ctx) {
     const { from, to } = rangeOf_(p);
-    const { sales, returns } = scope_(ctx);
+    const { sales, returns } = scope_(ctx, from, to);
     const rs = sales.filter((s) => inRange_(s.date, from, to));
     const base = leaderboard_(sales, returns, from, to);
     // items and new customers come from leaderboard_ already; this adds what only this report shows
@@ -314,7 +369,7 @@ function reportSalesmen_(p, ctx) {
 
 function reportRegister_(p, ctx) {
     const { from, to } = rangeOf_(p);
-    const { sales, returns } = scope_(ctx);
+    const { sales, returns } = scope_(ctx, from, to);
     const rows = sales
         .filter((s) => inRange_(s.date, from, to))
         .map((s) => ({
@@ -336,10 +391,10 @@ function reportRegister_(p, ctx) {
 
 function reportGst_(p, ctx) {
     const { from, to } = rangeOf_(p);
-    const { sales, returns } = scope_(ctx);
+    const { sales, returns } = scope_(ctx, from, to);
     const rs = sales.filter((s) => inRange_(s.date, from, to));
     const ids = indexBy_(rs, "id");
-    const items = rows_("Sale_Items").filter((i) => ids[i.sale_id]);
+    const items = saleItemsFor_(rs.map((s) => s.id)).filter((i) => ids[i.sale_id]);
     const byRate = {};
     const byHsn = {};
     items.forEach((i) => {
@@ -358,9 +413,9 @@ function reportGst_(p, ctx) {
     // credit notes (returns) in range by rate
     const rets = returns.filter((r) => inRange_(r.at, from, to));
     const rIds = indexBy_(rets, "id");
-    const siMap = indexBy_(rows_("Sale_Items"), "id");
+    const siMap = indexBy_(saleItemsFor_(rets.map((r) => r.sale_id)), "id");
     const cnByRate = {};
-    rows_("Return_Items").forEach((ri) => {
+    returnItemsFor_(rets.map((r) => r.id)).forEach((ri) => {
         if (!rIds[ri.return_id]) return;
         const si = siMap[ri.sale_item_id];
         const rate = si ? si.gst_rate : 0;
@@ -387,13 +442,13 @@ function reportGst_(p, ctx) {
 function reportProducts_(p, ctx) {
     const { from, to } = rangeOf_(p);
     const group = ["product", "brand", "category", "variant"].indexOf(p.group) >= 0 ? p.group : "variant";
-    const { sales } = scope_(ctx);
+    const { sales } = scope_(ctx, from, to);
     const ids = indexBy_(sales.filter((s) => inRange_(s.date, from, to)), "id");
     const vmap = indexBy_(rows_("Variants"), "id");
     const pmap = indexBy_(rows_("Products"), "id");
     const cmap = indexBy_(rows_("Categories"), "id");
     const out = {};
-    rows_("Sale_Items").forEach((i) => {
+    saleItemsFor_(Object.keys(ids).map(Number)).forEach((i) => {
         if (!ids[i.sale_id]) return;
         const q = r3_(i.qty - i.returned_qty);
         if (q <= 0) return;
@@ -418,17 +473,17 @@ function reportProducts_(p, ctx) {
 
 function reportProfit_(p, ctx) {
     const { from, to } = rangeOf_(p);
-    const { sales, returns } = scope_(ctx);
+    const { sales, returns } = scope_(ctx, from, to);
     const rs = sales.filter((s) => inRange_(s.date, from, to));
     const ids = indexBy_(rs, "id");
     let cogs = 0;
-    rows_("Sale_Items").forEach((i) => {
+    saleItemsFor_(rs.map((s) => s.id)).forEach((i) => {
         if (ids[i.sale_id]) cogs += i.unit_cost * i.qty;
     });
     const rets = returns.filter((r) => inRange_(r.at, from, to));
     const rIds = indexBy_(rets, "id");
     let retCost = 0;
-    rows_("Return_Items").forEach((ri) => {
+    returnItemsFor_(rets.map((r) => r.id)).forEach((ri) => {
         if (rIds[ri.return_id] && ri.restock) retCost += ri.unit_cost * ri.qty; // non-restocked goods stay a loss
     });
     const revenue = r2_(sumBy_(rs, "taxable") - sumBy_(rets, "taxable"));

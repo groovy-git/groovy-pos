@@ -22,21 +22,15 @@ function apiGetCatalog_(p, ctx) {
     const showCost = isStaffManager_(ctx);
     const stock = stockMap_(ctx.branch_id); // 0 = all branches → totals
     const byBranch = stockByBranch_();
+    const core = catalogCore_(version);
     return {
         data: {
             version: version,
             branch_id: num_(ctx.branch_id),
-            brands: rows_("Brands").map((b) => ({ id: b.id, name: b.name, active: b.active })),
-            categories: rows_("Categories").map((c) => ({
-                id: c.id, name: c.name, default_hsn: c.default_hsn, default_gst: c.default_gst,
-                sort: c.sort, active: c.active,
-            })),
-            products: rows_("Products").map((x) => ({
-                id: x.id, name: x.name, brand_id: x.brand_id, category_id: x.category_id,
-                gender: x.gender, sale_type: x.sale_type, hsn: x.hsn, gst_rate: x.gst_rate,
-                image: x.image, description: x.description, active: x.active,
-            })),
-            variants: rows_("Variants").map((v) => {
+            brands: core.brands,
+            categories: core.categories,
+            products: core.products,
+            variants: core.variants.map((v) => {
                 const o = {
                     id: v.id, product_id: v.product_id, sku: v.sku, barcode: v.barcode,
                     size_label: v.size_label, size_ml: v.size_ml, unit: v.unit, mrp: v.mrp,
@@ -48,6 +42,79 @@ function apiGetCatalog_(p, ctx) {
             }),
         },
     };
+}
+
+/**
+ * The part of the catalogue that is the same for everyone — everything except stock, which depends on
+ * the branch, and cost, which depends on the role.
+ *
+ * Reading four sheets and rebuilding this for every device that asks was the slowest thing the server
+ * did. It only changes when the catalogue version changes, so it is kept under that version number and
+ * rebuilt when the number moves. The cache holds 100 KB per key, hence the chunks; if anything about
+ * the stored copy looks wrong, it is simply rebuilt.
+ */
+function catalogCore_(version) {
+    const key = "cat_" + version;
+    const cache = CacheService.getScriptCache();
+    const saved = readChunked_(cache, key);
+    if (saved) {
+        try {
+            return JSON.parse(saved);
+        } catch (e) {
+            /* unreadable — fall through and rebuild */
+        }
+    }
+    const core = {
+        brands: rows_("Brands").map((b) => ({ id: b.id, name: b.name, active: b.active })),
+        categories: rows_("Categories").map((c) => ({
+            id: c.id, name: c.name, default_hsn: c.default_hsn, default_gst: c.default_gst,
+            sort: c.sort, active: c.active,
+        })),
+        products: rows_("Products").map((x) => ({
+            id: x.id, name: x.name, brand_id: x.brand_id, category_id: x.category_id,
+            gender: x.gender, sale_type: x.sale_type, hsn: x.hsn, gst_rate: x.gst_rate,
+            image: x.image, description: x.description, active: x.active,
+        })),
+        variants: rows_("Variants").map((v) => ({
+            id: v.id, product_id: v.product_id, sku: v.sku, barcode: v.barcode,
+            size_label: v.size_label, size_ml: v.size_ml, unit: v.unit, mrp: v.mrp,
+            sell_price: v.sell_price, reorder_level: v.reorder_level, active: v.active, avg_cost: v.avg_cost,
+        })),
+    };
+    try {
+        writeChunked_(cache, key, JSON.stringify(core), 21600);
+    } catch (e) {
+        console.error("catalogCore_ cache", e);
+    }
+    return core;
+}
+
+const CACHE_CHUNK_ = 90000; // the per-key limit is 100 KB
+const CACHE_MAX_CHUNKS_ = 40;
+
+function writeChunked_(cache, key, text, ttl) {
+    const n = Math.ceil(text.length / CACHE_CHUNK_);
+    if (n > CACHE_MAX_CHUNKS_) return false; // too big to be worth holding
+    const parts = {};
+    for (let i = 0; i < n; i++) parts[key + "_" + i] = text.substring(i * CACHE_CHUNK_, (i + 1) * CACHE_CHUNK_);
+    cache.putAll(parts, ttl);
+    cache.put(key, String(n), ttl); // written last: the count only counts once every piece is there
+    return true;
+}
+
+function readChunked_(cache, key) {
+    const n = Number(cache.get(key) || 0);
+    if (!n) return null;
+    const names = [];
+    for (let i = 0; i < n; i++) names.push(key + "_" + i);
+    const parts = cache.getAll(names);
+    let text = "";
+    for (let i = 0; i < n; i++) {
+        const piece = parts[names[i]];
+        if (piece === null || piece === undefined) return null; // a piece expired — rebuild
+        text += piece;
+    }
+    return text;
 }
 
 /* ---------- brands & categories ---------- */

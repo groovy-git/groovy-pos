@@ -90,7 +90,8 @@ function doPost(e) {
     return json_(dispatchOnce_(req));
 }
 
-// safe to run again — a retried read just reads again
+// reads are safe to run again, so their saved reply is kept only briefly — long enough to cover a
+// retry after Google loses one, not long enough to hand anyone stale figures
 const READ_ACTIONS_ = {
     bootstrap: 1, getCatalog: 1, dashboard: 1, listSales: 1, getSale: 1, report: 1, listCustomers: 1, findCustomer: 1,
     listHeld: 1, movements: 1, listExpenses: 1, listUsers: 1, listLogs: 1, customerHistory: 1, listSellers: 1,
@@ -101,14 +102,23 @@ const READ_ACTIONS_ = {
  * Google sometimes loses the reply (404 on the …/macros/echo redirect) after the script has already run.
  * The app then retries with the same req_id: a write that already happened returns its saved reply
  * instead of running twice (no double stock-in, expense, return…). Requests without req_id run as before.
+ *
+ * Reads are kept too. They are safe to repeat, but repeating them is what made a lost reply cost 20
+ * seconds of sheet reading a second time; answering the retry from the saved reply costs nothing.
  */
 function dispatchOnce_(req) {
     const id = req && typeof req.req_id === "string" && /^[A-Za-z0-9-]{8,64}$/.test(req.req_id) ? req.req_id : "";
-    if (!id || READ_ACTIONS_[req.action]) return dispatch_(req);
+    if (!id) return dispatch_(req);
+    const isRead = !!READ_ACTIONS_[req.action];
     const cache = CacheService.getScriptCache();
     const key = "rq_" + id;
     const seen = cache.get(key);
-    if (seen === "PENDING") return { success: false, code: "IN_PROGRESS", message: "Still saving your last request — one moment…" };
+    if (seen === "PENDING")
+        return {
+            success: false,
+            code: "IN_PROGRESS",
+            message: isRead ? "Still fetching that — one moment…" : "Still saving your last request — one moment…",
+        };
     if (seen) {
         try {
             return JSON.parse(seen);
@@ -121,7 +131,7 @@ function dispatchOnce_(req) {
     try {
         const out = JSON.stringify(res);
         // failures aren't kept, so a retry can try again; big replies can't be cached (100 KB limit)
-        if (res.success && out.length < 90000) cache.put(key, out, 600);
+        if (res.success && out.length < 90000) cache.put(key, out, isRead ? 120 : 600);
         else cache.remove(key);
     } catch (e) {
         cache.remove(key);

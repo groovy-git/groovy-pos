@@ -31,7 +31,7 @@ function apiFindCustomer_(p, ctx) {
 
 function apiListCustomers_(p, ctx) {
     const q = str_(p.q).toLowerCase();
-    let rows = rows_("Customers");
+    let rows = q ? rows_("Customers") : tailRows_("Customers", 2000);
     if (q) rows = rows.filter((c) => c.name.toLowerCase().indexOf(q) >= 0 || c.phone.indexOf(q) >= 0);
     rows = rows.slice().sort((a, b) => (b.last_visit || "").localeCompare(a.last_visit || ""));
     return { data: rows.slice(0, num_(p.limit, 300)).map(customerOut_) };
@@ -67,9 +67,9 @@ function apiSaveCustomer_(p, ctx) {
 }
 
 function apiCustomerHistory_(p, ctx) {
-    const c = findBy_("Customers", "id", Number(p.id));
+    const c = findById_("Customers", p.id);
     if (!c) fail_("Customer not found");
-    let sales = rows_("Sales").filter((s) => s.customer_id === c.id);
+    let sales = windowRows_("Sales", "customer_id", c.id, c.id).filter((s) => s.customer_id === c.id);
     if (ctx.user.role === "salesman") sales = sales.filter((s) => s.salesman_id === ctx.user.id);
     return {
         data: {
