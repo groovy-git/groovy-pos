@@ -146,7 +146,9 @@ function dayCloseMail_(d, s, opt) {
         opt.salesman ? "" : "Cash in drawer (expected): " + inrText_(d.expected_cash),
         "",
         d.by_salesman
-            .map((r) => r.name + ": " + r.bills + " bills, " + r.items + " items, " + r.new_customers + " new, " + inrText_(r.net))
+            .map((r) =>
+                r.name + ": " + r.bills + " bills, " + r.items + " items, " +
+                r.new_customers + " new " + (r.new_customers === 1 ? "customer" : "customers") + ", " + inrText_(r.net))
             .join("\n"),
         items.length ? "\nItems sold:" : "",
         items

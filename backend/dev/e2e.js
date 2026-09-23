@@ -252,7 +252,7 @@ mail = env.mails.pop();
 check("manager mail is whole shop", /Whole shop/.test(mail.htmlBody) && /Cash in drawer/.test(mail.htmlBody) && mail.cc === "imran@x.in", mail.cc);
 check("mail lists items sold with stock left", /Items sold/.test(mail.htmlBody) && /Asad EDP/.test(mail.htmlBody) && /Stock left/.test(mail.htmlBody) && /Items sold:/.test(mail.body), mail.body);
 // per salesman: under the name, worded so it can't be mistaken for the per-product 'Items sold' table
-check("mail shows items billed and new customers per salesman", /items billed · \d+ new customer/.test(mail.htmlBody) && /bills, \d+ items, \d+ new,/.test(mail.body), mail.htmlBody.slice(0, 200));
+check("mail shows items billed and new customers per salesman", /items billed · \d+ new customer/.test(mail.htmlBody) && /bills, \d+ items, \d+ new customers?,/.test(mail.body), mail.htmlBody.slice(0, 200));
 check("bad report email rejected", !call("saveSettings", { settings: { report_emails: "owner@x.in, not-an-email" } }, T).success);
 check("salesman cannot see report emails", call("getSettings", {}, S1).data.report_emails === undefined);
 for (let i = 0; i < 4; i++) call("emailDayClose", {}, S1);

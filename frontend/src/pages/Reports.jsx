@@ -394,7 +394,7 @@ function SalesmenTable({ rows, title, full, csv }) {
           <thead><tr><th>Salesman</th><th className="num">Bills</th>{full && <th className="num">Disc.</th>}<th className="num">Returns</th><th className="num">Net</th></tr></thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.salesman_id}><td><b>{r.name}</b><div className="tiny muted">{plural("item", r.items || 0)} · {r.new_customers || 0} new</div><div className="tiny muted">avg {inr(Math.round(r.avg_bill))}</div></td><td className="num">{r.bills}</td>{full && <td className="num">{inr(r.discount)}</td>}<td className="num">{inr(r.returns)}</td><td className="num"><b>{inr(r.net)}</b></td></tr>
+              <tr key={r.salesman_id}><td><b>{r.name}</b><div className="tiny muted">{plural("item", r.items || 0)} · avg {inr(Math.round(r.avg_bill))}</div><div className="tiny muted">{plural("new customer", r.new_customers || 0)}</div></td><td className="num">{r.bills}</td>{full && <td className="num">{inr(r.discount)}</td>}<td className="num">{inr(r.returns)}</td><td className="num"><b>{inr(r.net)}</b></td></tr>
             ))}
           </tbody>
         </table>

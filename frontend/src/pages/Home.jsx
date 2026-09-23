@@ -191,7 +191,7 @@ export default function Home() {
                       </div>
                       {/* on its own line: with returns too, one line wraps awkwardly on a phone */}
                       <div className="tiny muted">
-                        {plural("item", r.items || 0)} · {r.new_customers || 0} new
+                        {plural("item", r.items || 0)} · {plural("new customer", r.new_customers || 0)}
                       </div>
                     </div>
                   </div>
