@@ -339,6 +339,11 @@ function savePendingInvoicePdfs() {
     resetReqCache_();
     PDF_DIRS_ = {}; // look the folders up again: someone may have moved or renamed them since
     migrateRoleNames_(); // one-time, and cheap once done: the app works either way meanwhile
+    try {
+        ensureBackupTrigger_(); // puts the monthly backup in place without anyone running Setup
+    } catch (e) {
+        console.error("ensureBackupTrigger_", e);
+    }
     if (setting_("invoice_pdfs") === "no") return;
     const started = Date.now();
     const inTime = () => Date.now() - started < 4 * 60 * 1000; // Apps Script stops at 6 min; the next run continues

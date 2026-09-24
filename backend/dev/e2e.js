@@ -1192,5 +1192,117 @@ const MGRT = rnEnv.call("login", { email: "mgr-rn@x.in", password: "secret7" }).
 check("a manager still has manager rights", rnEnv.call("stockIn", { lines: [{ variant_id: rnVid, qty: 1, unit_cost: 40 }] }, MGRT).success);
 check("an unknown role is still rejected", !rnEnv.call("saveUser", { name: "Nope", email: "nope@x.in", role: "wizard", password: "secret8" }, RNT).success);
 
+// ---- backups: a copy of the sheet and the invoices, in Back_up ----
+// (own env: the Drive tree is inspected directly, and bills are backdated into two months)
+const bkEnv = createEnv();
+const bkDrive = bkEnv.drive;
+const bkGp = bkDrive.root.createFolder("Groovy POS");
+bkDrive.sheetFile.parent = bkGp; // the sheet lives in the Groovy POS folder, as it does for real
+bkEnv.ctx.setupSheets();
+const bkPwd = /Password: (\S+)/.exec(bkEnv.alerts.pop())[1];
+const BKT = bkEnv.call("login", { email: "owner@groovy.test", password: bkPwd }).data.token;
+const bkCat = bkEnv.call("bootstrap", {}, BKT).data.catalog.categories[0].id;
+bkEnv.call("saveProduct", {
+    name: "Backup Tester", category_id: bkCat, gst_rate: 18,
+    variants: [{ size_label: "5ml", mrp: 100, sell_price: 100, cost: 40, opening_stock: 500, barcode: "BK0001" }],
+}, BKT);
+const bkVid = bkEnv.call("getCatalog", {}, BKT).data.variants.find((v) => v.barcode === "BK0001").id;
+const bkOwner = bkEnv.ctx.findBy_("Users", "email", "owner@groovy.test");
+const bkBill = (ref, at) =>
+    bkEnv.ctx.apiCompleteSale_(
+        { client_ref: ref, lines: [{ variant_id: bkVid, qty: 1 }], payments: [{ method: "cash", amount: 100 }], _at: at },
+        { user: bkOwner, token: "", branch_id: 1 },
+    ).data.sale;
+// two bills in August, one in September
+bkBill("bk-1", "2026-08-10 10:00:00");
+bkBill("bk-2", "2026-08-20 10:00:00");
+bkBill("bk-3", "2026-09-05 10:00:00");
+bkEnv.ctx.savePendingInvoicePdfs(); // files them under Sales_Invoices/FY 2026-27/08 and /09
+
+const bkFolder = (parent, name) => { const it = parent.getFoldersByName(name); return it.hasNext() ? it.next() : null; };
+const bkRoot = () => bkFolder(bkGp, "Back_up");
+const bkPdfs = (folder) => {
+    // every pdf anywhere under this folder
+    const out = [];
+    const walk = (f) => {
+        const files = f.getFiles();
+        while (files.hasNext()) { const x = files.next(); if (!x.trashed && /\.pdf$/.test(x.getName())) out.push(x); }
+        const subs = f.getFolders();
+        while (subs.hasNext()) walk(subs.next());
+    };
+    walk(folder);
+    return out;
+};
+const bkPath = (f) => { const p = []; let x = f.parent; while (x) { p.unshift(x.name); x = x.parent; } return p.join("/"); };
+const bkNamed = (folder, name) => { const it = folder.getFilesByName(name); return it.hasNext() ? it.next() : null; };
+
+// the monthly job, run as if it were 1 September: it must cover August only
+bkEnv.ctx.todayStr_ = undefined; // (todayStr_ is read through the vm context below)
+require("vm").runInContext('todayStr_ = function () { return "2026-09-01"; };', bkEnv.ctx);
+const bkMonthly = bkEnv.ctx.monthlyBackup();
+check("monthly backup: folder is named for the month it covers", !!bkFolder(bkRoot(), "2026-08"), bkRoot() ? "no 2026-08" : "no Back_up");
+const bkAug = bkFolder(bkRoot(), "2026-08");
+check("monthly backup: the sheet is copied", !!bkNamed(bkAug, "Groovy POS Data 2026-08"), bkAug.getFiles().hasNext());
+check("monthly backup: August's invoices, and only those", bkPdfs(bkAug).length === 2, bkPdfs(bkAug).map((f) => f.getName()));
+check("monthly backup: filed the way they are stored", /Back_up\/2026-08\/Sales_Invoices\/FY 2026-27\/08\//.test(bkPath(bkPdfs(bkAug)[0])), bkPath(bkPdfs(bkAug)[0]));
+check("monthly backup: says it finished", !!bkNamed(bkAug, "BACKUP COMPLETE.txt") && !bkNamed(bkAug, "BACKUP IN PROGRESS.txt"));
+check("monthly backup: reports what it did", bkMonthly.invoices === 2 && bkMonthly.sheet === true && bkMonthly.finished === true, bkMonthly);
+
+// running it again must not copy anything a second time
+const bkAgain = bkEnv.ctx.monthlyBackup();
+check("monthly backup again: nothing is copied twice", bkAgain.invoices === 0 && bkAgain.sheet === false, bkAgain);
+check("monthly backup again: still one copy of each file", bkPdfs(bkAug).length === 2, bkPdfs(bkAug).length);
+check("monthly backup again: one folder, not two", bkRoot().getFolders().hasNext(), true);
+
+// a manual backup of everything, twice in the same day → two folders side by side
+require("vm").runInContext('backupStamp_ = function () { return "2026-09-25 09-15"; };', bkEnv.ctx);
+require("vm").runInContext('SpreadsheetApp.getUi = function () { return { alert: function () { return "YES"; }, Button: { YES: "YES", NO: "NO", CANCEL: "CANCEL" }, ButtonSet: { YES_NO_CANCEL: 1 } }; };', bkEnv.ctx);
+bkEnv.ctx.backupNow();
+const bkManual = bkFolder(bkRoot(), "2026-09-25 09-15");
+check("manual backup: a folder stamped with the time", !!bkManual);
+check("manual backup: every invoice, both months", bkPdfs(bkManual).length === 3, bkPdfs(bkManual).map((f) => f.getName()));
+check("manual backup: the sheet too", !!bkNamed(bkManual, "Groovy POS Data 2026-09-25 09-15"));
+check("manual backup: says it finished", !!bkNamed(bkManual, "BACKUP COMPLETE.txt"));
+require("vm").runInContext('backupStamp_ = function () { return "2026-09-25 18-40"; };', bkEnv.ctx);
+bkEnv.ctx.backupNow();
+check("a second backup the same day sits beside the first", !!bkFolder(bkRoot(), "2026-09-25 18-40") && !!bkFolder(bkRoot(), "2026-09-25 09-15"));
+check("the earlier backup is untouched", bkPdfs(bkFolder(bkRoot(), "2026-09-25 09-15")).length === 3);
+
+// a run that is cut short leaves the marker, and the next one finishes the job
+require("vm").runInContext('backupStamp_ = function () { return "2026-09-26 07-00"; };', bkEnv.ctx);
+require("vm").runInContext('backupBudget_ = function () { var n = 0; return function () { return n++ < 2; }; };', bkEnv.ctx); // time runs out almost at once
+bkEnv.ctx.backupNow();
+const bkPart = bkFolder(bkRoot(), "2026-09-26 07-00");
+check("interrupted: the folder says it is still running", !!bkNamed(bkPart, "BACKUP IN PROGRESS.txt") && !bkNamed(bkPart, "BACKUP COMPLETE.txt"));
+check("interrupted: what is left to do is written down", /Months: /.test(bkNamed(bkPart, "BACKUP IN PROGRESS.txt").getBlob().getDataAsString()),
+    bkNamed(bkPart, "BACKUP IN PROGRESS.txt").getBlob().getDataAsString());
+check("interrupted: a follow-up run is booked", bkEnv.triggers.filter((t) => t.fn === "resumeBackup").length === 1, bkEnv.triggers.map((t) => t.fn));
+const bkPartCount = bkPdfs(bkPart).length;
+require("vm").runInContext('backupBudget_ = function () { return function () { return true; }; };', bkEnv.ctx); // time again
+bkEnv.ctx.resumeBackup();
+check("resumed: the same folder is finished off", !!bkNamed(bkPart, "BACKUP COMPLETE.txt") && !bkNamed(bkPart, "BACKUP IN PROGRESS.txt"));
+check("resumed: every invoice is there, none twice", bkPdfs(bkPart).length === 3 && bkPartCount <= 3, { after: bkPdfs(bkPart).length, before: bkPartCount });
+check("resumed: the follow-up booking is cleared", bkEnv.triggers.filter((t) => t.fn === "resumeBackup").length === 0);
+check("resume with nothing to do is harmless", bkEnv.ctx.resumeBackup() === null);
+
+// the monthly trigger installs itself, and only once
+check("the monthly trigger is installed by the timer", bkEnv.triggers.filter((t) => t.fn === "monthlyBackup").length === 1, bkEnv.triggers.map((t) => t.fn));
+const bkTrig = bkEnv.triggers.find((t) => t.fn === "monthlyBackup");
+check("the monthly trigger runs on the 1st at 6am", bkTrig.monthDay === 1 && bkTrig.hour === 6 && bkTrig.tz === "Asia/Kolkata", bkTrig);
+bkEnv.ctx.savePendingInvoicePdfs();
+check("the timer does not add a second one", bkEnv.triggers.filter((t) => t.fn === "monthlyBackup").length === 1);
+
+// a failure is emailed and logged
+bkEnv.call("saveSettings", { settings: { report_emails: "owner@x.in" } }, BKT);
+const bkMailsBefore = bkEnv.mails.length;
+require("vm").runInContext('backupRoot_ = function () { throw new Error("Drive is full"); };', bkEnv.ctx);
+let bkThrew = false;
+try { bkEnv.ctx.monthlyBackup(); } catch (e) { bkThrew = true; }
+check("a failed backup is reported, not silent", bkThrew && bkEnv.mails.length === bkMailsBefore + 1, { bkThrew, mails: bkEnv.mails.length - bkMailsBefore });
+check("the email says what went wrong", /Drive is full/.test(bkEnv.mails[bkEnv.mails.length - 1].body), bkEnv.mails[bkEnv.mails.length - 1].subject);
+check("and it is in the activity log", bkEnv.ctx.rows_("Activity_Logs").some((l) => l.action === "BACKUP_FAILED"),
+    bkEnv.ctx.rows_("Activity_Logs").slice(-3).map((l) => l.action));
+check("a successful backup is logged too", bkEnv.ctx.rows_("Activity_Logs").some((l) => l.action === "BACKUP"));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

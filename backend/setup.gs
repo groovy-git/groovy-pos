@@ -11,6 +11,7 @@ function onOpen() {
         .addItem("3. Reset test data (keep setup)…", "resetTestData")
         .addItem("4. Reset EVERYTHING incl. products…", "resetAll")
         .addSeparator()
+        .addItem("Back up now…", "backupNow")
         .addItem("Reset a staff password…", "resetStaffPassword")
         .addItem("Log everyone out (after an update)", "logoutEveryone")
         .addItem("Email today's day close now", "emailDayCloseNow")
@@ -301,7 +302,12 @@ function setupSheets() {
     appendRows_("Settings", missing);
 
     seedDefaultCategories_();
-    migrateRoleNames_(); // "salesperson" → "salesperson" on staff rows written before the rename
+    migrateRoleNames_(); // staff rows written before the role was renamed
+    try {
+        ensureBackupTrigger_(); // the monthly backup; Setup is where Google asks for permission
+    } catch (e) {
+        console.error("ensureBackupTrigger_", e);
+    }
 
     // invoice folders used to be remembered by Drive id; they are found by name now, so these
     // leftovers would only mislead whoever reads Project Settings next

@@ -133,6 +133,7 @@ class Sheet {
 
 class Spreadsheet {
     constructor() { this.sheets = [new Sheet("Sheet1")]; }
+    getName() { return "Groovy POS Data"; }
     getSheetByName(n) { return this.sheets.find((s) => s.name === n) || null; }
     getId() { return "SHEET_FILE"; }
     insertSheet(n) { const s = new Sheet(n); this.sheets.push(s); return s; }
@@ -163,13 +164,19 @@ function createDrive() {
         o.isTrashed = () => o.trashed; o.setTrashed = (t) => ((o.trashed = t), o);
         o.getParents = () => iter(o.parent ? [o.parent] : []);
         o.getUrl = () => "https://drive.google.com/" + (kind === "folder" ? "drive/folders/" : "file/d/") + o.id + "/view";
+        o.getBlob = () => ({ getDataAsString: () => String(o.html === undefined ? "" : o.html) });
         if (kind === "folder") {
             o.getFoldersByName = (n) => iter(children(o, "folder").filter((x) => x.name === n));
+            o.getFilesByName = (n) => iter(children(o, "file").filter((x) => x.name === n));
             o.createFolder = (n) => make("folder", n, o);
-            o.createFile = (blob) => make("file", blob.name, o, { mime: blob.mime, html: blob.html });
+            o.createFile = (a, b) =>
+                // a blob, or (name, contents) — both forms are used by the app
+                typeof a === "string" ? make("file", a, o, { mime: "text/plain", html: String(b) }) : make("file", a.name, o, { mime: a.mime, html: a.html });
             o.getFiles = () => iter(children(o, "file"));
             o.getFolders = () => iter(children(o, "folder"));
         }
+        // a copy is a new item with the same contents; the Sheet copies as an ordinary file
+        o.makeCopy = (n, dest) => make(o.kind === "folder" ? "folder" : "file", n || o.name, dest || o.parent, { mime: o.mime, html: o.html });
         o.moveTo = (f) => ((o.parent = f), o);
         o.setSharing = () => o;
         items.set(o.id, o);
@@ -257,6 +264,8 @@ function createEnv() {
                 const b = {
                     timeBased: () => b, everyDays: (n) => ((t.days = n), b), inTimezone: (z) => ((t.tz = z), b),
                     everyMinutes: (n) => ((t.minutes = n), b),
+                    onMonthDay: (d) => ((t.monthDay = d), b),
+                    after: (ms) => ((t.afterMs = ms), b),
                     atHour: (h) => ((t.hour = h), b), create: () => (triggers.push(t), t),
                 };
                 return b;
