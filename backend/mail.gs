@@ -117,7 +117,8 @@ function dayCloseMail_(d, s, opt) {
             ? '<h3 style="font-family:Georgia,serif;color:#654321;margin:18px 0 6px">By branch</h3><table style="width:100%;border-collapse:collapse;font-size:14px"><tr><th ' +
               th + ">Branch</th><th " + thr + ">Bills</th><th " + thr + ">Returns</th><th " + thr + ">Net</th></tr>" +
               d.by_branch.map((b) => "<tr><td " + td + ">" + escHtml_(b.name) +
-                  sub(b.items + " items billed · " + b.new_customers + " new to the shop") +
+                  sub(b.items + " items billed · " + b.new_customers + " new " +
+                      (b.new_customers === 1 ? "customer" : "customers") + " to the shop") +
                   "</td><td " + tdr + ">" + b.bills + "</td><td " + tdr + ">" + inrText_(b.returns) + "</td><td " + tdr + "><b>" + inrText_(b.net) + "</b></td></tr>").join("") +
               "</table>"
             : "") +

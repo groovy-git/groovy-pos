@@ -160,7 +160,7 @@ function Report({ type, d }) {
               <div key={b.branch_id} className="kv">
                 <span>
                   <b>{b.name}</b> <span className="small muted">· {plural("bill", b.bills)}{b.returns ? " · returns " + inr(b.returns) : ""}</span>
-                  <div className="tiny muted">{plural("item", b.items || 0)} · {b.new_customers || 0} new to the shop</div>
+                  <div className="tiny muted">{plural("item", b.items || 0)} · {plural("new customer", b.new_customers || 0)} to the shop</div>
                 </span>
                 <b className="money">{inr(b.net)}</b>
               </div>

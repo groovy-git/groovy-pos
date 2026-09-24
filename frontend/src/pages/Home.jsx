@@ -127,7 +127,7 @@ export default function Home() {
                       <b>{b.name}</b> <span className="small muted">· {plural("bill", b.bills)} · {plural("item", b.items || 0)}</span>
                       {/* a customer belongs to the branch that billed them first, so branches never
                           claim the same person twice */}
-                      <div className="tiny muted">{b.new_customers || 0} new to the shop</div>
+                      <div className="tiny muted">{plural("new customer", b.new_customers || 0)} to the shop</div>
                     </span>
                     <span className="right">
                       <b className="money">{inr(b.net)}</b>
