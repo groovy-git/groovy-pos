@@ -1399,5 +1399,96 @@ b2NoImg.ctx.backupNow();
 const b2Empty = (() => { const it = b2NoImg.drive.root.getFolders(); while (it.hasNext()) { const f = it.next(); if (f.getName() === "Groovy POS") { const b = f.getFoldersByName("Back_up"); if (b.hasNext()) return b.next().getFoldersByName("2026-09-25 13-00").next(); } } return null; })();
 check("a shop with no photos backs up without complaint", !!b2Empty && !!b2Named(b2Empty, "BACKUP COMPLETE.txt"));
 
+const countLiveImages = (folder) => { let n = 0; const it = folder.getFiles(); while (it.hasNext()) { if (!it.next().trashed) n++; } return n; };
+// ---- a reset clears the Drive files of what it deleted, and never touches Back_up ----
+const rdEnv = createEnv();
+const rdDrive = rdEnv.drive;
+const rdGp = rdDrive.root.createFolder("Groovy POS");
+rdDrive.sheetFile.parent = rdGp;
+const rdImages = rdDrive.root.createFolder("GroovyPOS_Images");
+["a.jpg", "b.jpg"].forEach((n) => rdImages.createFile({ name: n, mime: "image/jpeg", html: "x" }));
+rdEnv.ctx.setupSheets();
+const rdPwd = /Password: (\S+)/.exec(rdEnv.alerts.pop())[1];
+const RDT = rdEnv.call("login", { email: "owner@groovy.test", password: rdPwd }).data.token;
+const rdCat = rdEnv.call("bootstrap", {}, RDT).data.catalog.categories[0].id;
+rdEnv.call("saveProduct", {
+    name: "Reset Drive Tester", category_id: rdCat, gst_rate: 18,
+    variants: [{ size_label: "5ml", mrp: 100, sell_price: 100, cost: 40, opening_stock: 50, barcode: "RD1" }],
+}, RDT);
+const rdVid = rdEnv.call("getCatalog", {}, RDT).data.variants.find((v) => v.barcode === "RD1").id;
+const rdOwner = rdEnv.ctx.findBy_("Users", "email", "owner@groovy.test");
+["rd-1", "rd-2"].forEach((ref) =>
+    rdEnv.ctx.apiCompleteSale_(
+        { client_ref: ref, lines: [{ variant_id: rdVid, qty: 1 }], payments: [{ method: "cash", amount: 100 }] },
+        { user: rdOwner, token: "", branch_id: 1 },
+    ));
+rdEnv.ctx.savePendingInvoicePdfs();
+
+const rdYes = 'SpreadsheetApp.getUi = function () { return { alert: function () { return "YES"; }, prompt: function () { return { getSelectedButton: function () { return "OK"; }, getResponseText: function () { return PROMPT_ANSWER; } }; }, Button: { YES: "YES", NO: "NO", OK: "OK", CANCEL: "CANCEL" }, ButtonSet: { YES_NO_CANCEL: 1, YES_NO: 2, OK_CANCEL: 3 } }; };';
+const rdLive = (f) => !f.trashed;
+const rdPdfsUnder = (folder) => {
+    const out = [];
+    const walk = (f) => {
+        if (f.trashed) return;
+        const files = f.getFiles();
+        while (files.hasNext()) { const x = files.next(); if (rdLive(x) && /\.pdf$/.test(x.getName())) out.push(x); }
+        const subs = f.getFolders();
+        while (subs.hasNext()) walk(subs.next());
+    };
+    walk(folder);
+    return out;
+};
+const rdFolder = (parent, name) => { const it = parent.getFoldersByName(name); return it.hasNext() ? it.next() : null; };
+
+// a full backup first, exactly as you would before wiping anything
+require("vm").runInContext(rdYes, rdEnv.ctx);
+require("vm").runInContext('backupStamp_ = function () { return "2026-09-25 08-00"; };', rdEnv.ctx);
+rdEnv.ctx.backupNow();
+const rdBackup = rdFolder(rdFolder(rdGp, "Back_up"), "2026-09-25 08-00");
+const rdBackedUpPdfs = rdPdfsUnder(rdBackup).length;
+const rdBackedUpPhotos = (() => { const f = rdFolder(rdBackup, "GroovyPOS_Images"); let n = 0; const it = f.getFiles(); while (it.hasNext()) { if (rdLive(it.next())) n++; } return n; })();
+check("before the reset: the backup holds the invoices and photos", rdBackedUpPdfs === 2 && rdBackedUpPhotos === 2, { rdBackedUpPdfs, rdBackedUpPhotos });
+check("the warning names the backup it found", /Last finished backup: 2026-09-25 08-00/.test(rdEnv.ctx.backupStatusLine_()), rdEnv.ctx.backupStatusLine_());
+
+// option 3: bills and their PDFs go; products and photos stay
+require("vm").runInContext('PROMPT_ANSWER = "RESET";', rdEnv.ctx);
+rdEnv.ctx.resetTestData();
+const rdInvoiceRoot = rdFolder(rdGp, "Sales_Invoices");
+check("reset test data: the invoice PDFs are gone", rdPdfsUnder(rdInvoiceRoot).length === 0, rdPdfsUnder(rdInvoiceRoot).map((f) => f.getName()));
+check("reset test data: the Sales_Invoices folder itself stays", !!rdInvoiceRoot && !rdInvoiceRoot.trashed);
+check("reset test data: the product photos are kept", countLiveImages(rdImages) === 2, countLiveImages(rdImages));
+check("reset test data: products are kept", rdEnv.ctx.rows_("Products").length === 1);
+check("reset test data: the backup is untouched", rdPdfsUnder(rdBackup).length === 2 && !rdBackup.trashed, rdPdfsUnder(rdBackup).length);
+
+// a new bill after the reset starts at 00001 again and does not clash with anything
+// (a reset zeroes the stock and logs everyone out, so both are put back first)
+const RDT2 = rdEnv.call("login", { email: "owner@groovy.test", password: rdPwd }).data.token;
+rdEnv.call("adjustStock", { variant_id: rdVid, mode: "set", qty: 10 }, RDT2, 1);
+rdEnv.ctx.apiCompleteSale_(
+    { client_ref: "rd-3", lines: [{ variant_id: rdVid, qty: 1 }], payments: [{ method: "cash", amount: 100 }] },
+    { user: rdEnv.ctx.findBy_("Users", "email", "owner@groovy.test"), token: "", branch_id: 1 });
+rdEnv.ctx.savePendingInvoicePdfs();
+const rdFresh = rdPdfsUnder(rdFolder(rdGp, "Sales_Invoices"));
+check("after the reset: one bill, one PDF, no duplicate name", rdFresh.length === 1 && /00001/.test(rdFresh[0].getName()), rdFresh.map((f) => f.getName()));
+
+// option 4: the photos go too
+require("vm").runInContext('PROMPT_ANSWER = "ERASE ALL";', rdEnv.ctx);
+rdEnv.ctx.resetAll();
+check("reset everything: the photos are gone", countLiveImages(rdImages) === 0, countLiveImages(rdImages));
+check("reset everything: the photo folder itself stays, ready for the next upload", !rdImages.trashed);
+check("reset everything: the invoice PDFs are gone", rdPdfsUnder(rdFolder(rdGp, "Sales_Invoices")).length === 0);
+check("reset everything: products are gone", rdEnv.ctx.rows_("Products").length === 0);
+check("reset everything: the backup still has everything", rdPdfsUnder(rdBackup).length === 2 && !rdBackup.trashed, rdPdfsUnder(rdBackup).length);
+check("reset everything: the backup's photos are still there too",
+    (() => { const f = rdFolder(rdBackup, "GroovyPOS_Images"); let n = 0; const it = f.getFiles(); while (it.hasNext()) { if (rdLive(it.next())) n++; } return n; })() === 2);
+check("reset everything: the Back_up folder is never binned", !rdFolder(rdGp, "Back_up").trashed);
+
+// with no backup at all, the warning says so plainly
+const rdNoBk = createEnv();
+rdNoBk.drive.sheetFile.parent = rdNoBk.drive.root.createFolder("Groovy POS");
+rdNoBk.ctx.setupSheets();
+rdNoBk.alerts.pop();
+check("with no backup, the warning says so", /no finished backup yet/.test(rdNoBk.ctx.backupStatusLine_()), rdNoBk.ctx.backupStatusLine_());
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

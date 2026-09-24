@@ -385,6 +385,73 @@ function backupFailed_(what, e) {
     }
 }
 
+/* ---------- what a reset clears in Drive ---------- */
+
+/**
+ * The newest finished backup, by folder name, or "" if there has never been one.
+ * Shown before a reset so nobody erases the shop without knowing what they still have.
+ */
+function lastBackupLabel_() {
+    const folders = backupRoot_().getFolders();
+    let newest = "";
+    while (folders.hasNext()) {
+        const f = folders.next();
+        if (!fileNamed_(f, BACKUP_DONE_)) continue; // half-finished ones do not count
+        if (f.getName() > newest) newest = f.getName();
+    }
+    return newest;
+}
+
+/**
+ * Move the invoice PDFs to Drive's bin, keeping the Sales_Invoices folder itself.
+ *
+ * A reset restarts bill numbers at 00001, so the old PDFs would otherwise share their names with the
+ * new bills — two different invoices called GF-26-27-00001.pdf in one folder. The year folders go as
+ * a whole, which is one move each rather than one per file. Backups are elsewhere and are untouched.
+ */
+function trashInvoiceFiles_() {
+    const root = invoiceRoot_();
+    const years = root.getFolders();
+    let gone = 0;
+    while (years.hasNext()) {
+        years.next().setTrashed(true);
+        gone++;
+    }
+    const loose = root.getFiles(); // anything sitting directly in Sales_Invoices
+    while (loose.hasNext()) {
+        loose.next().setTrashed(true);
+    }
+    PDF_DIRS_ = {}; // the folders just went; do not hand a trashed one to the next PDF
+    return gone;
+}
+
+/** Move the product photos to Drive's bin, keeping the folder so the next upload still works. */
+function trashProductImages_(inTime) {
+    const it = DriveApp.getFoldersByName(APP.IMAGE_FOLDER);
+    if (!it.hasNext()) return 0;
+    const files = it.next().getFiles();
+    let gone = 0;
+    while (files.hasNext()) {
+        if (inTime && !inTime()) break; // a big library finishes on the next run
+        files.next().setTrashed(true);
+        gone++;
+    }
+    return gone;
+}
+
+/** How many photos there are, for the warning before a reset. */
+function countProductImages_() {
+    const it = DriveApp.getFoldersByName(APP.IMAGE_FOLDER);
+    if (!it.hasNext()) return 0;
+    const files = it.next().getFiles();
+    let n = 0;
+    while (files.hasNext()) {
+        files.next();
+        n++;
+    }
+    return n;
+}
+
 /** Installs the monthly trigger if it is missing. Cheap enough to call from the 15-minute timer. */
 function ensureBackupTrigger_() {
     const have = ScriptApp.getProjectTriggers().filter((t) => t.getHandlerFunction() === BACKUP_FN_);

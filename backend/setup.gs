@@ -40,8 +40,12 @@ function resetTestData() {
         "Reset test data",
         "This permanently deletes all bills, payments, returns, held bills, expenses, customers, stock history, " +
             "stock-ins and transfers, sets all stock to 0 and restarts bill numbers at 00001. Everyone is logged out.\n\n" +
-            "Kept: products & prices, categories, brands, staff, branches and shop settings.\n\n" +
-            "Make a backup first (File → Make a copy). Type RESET to continue:",
+            "The invoice PDFs go to Drive's bin as well: bill numbers start again at 00001, so keeping them would " +
+            "leave two different invoices with the same name.\n\n" +
+            "Kept: products & prices, photos, categories, brands, staff, branches and shop settings. " +
+            "Back_up is not touched.\n\n" +
+            backupStatusLine_() +
+            "Type RESET to continue:",
         ui.ButtonSet.OK_CANCEL,
     );
     if (r.getSelectedButton() !== ui.Button.OK || r.getResponseText().trim() !== "RESET") {
@@ -57,6 +61,23 @@ function resetTestData() {
             "Bill numbers restart at 00001. Stock is now 0 — enter real stock with Stock In.\n" +
             "Everyone has been logged out; log in again on each phone.",
     );
+}
+
+/**
+ * The line in a reset's confirmation box that says what you still have to fall back on.
+ * It states the position rather than blocking: wiping a test copy with nothing worth keeping is a
+ * perfectly good reason to carry on without a backup.
+ */
+function backupStatusLine_() {
+    let newest = "";
+    try {
+        newest = lastBackupLabel_();
+    } catch (e) {
+        console.error("backupStatusLine_", e);
+    }
+    return newest
+        ? "Last finished backup: " + newest + "\n\n"
+        : "⚠ There is no finished backup yet. Cancel and run Groovy POS → Back up now first if you want one.\n\n";
 }
 
 /** The standard categories, written only when there are none. Returns how many were added. */
@@ -158,7 +179,7 @@ function resetStaffPassword() {
 }
 
 function resetTestData_() {
-    return withLock_(() => {
+    const res = withLock_(() => {
         const ended = logoutEveryone_();
 
         const cleared = {};
@@ -186,6 +207,26 @@ function resetTestData_() {
         log_({ user: { id: 0, name: "Sheet owner" } }, "RESET", "All", "", "Test data cleared (setup kept)");
         return { cleared, counters: counters.length, stock_reset: variants.length };
     });
+    // outside the lock, and here rather than in the menu command, so that "Reset EVERYTHING" —
+    // which runs this first — clears the PDFs too
+    res.pdf_years = clearInvoicePdfs_();
+    return res;
+}
+
+/**
+ * The invoice PDFs of bills that have just been deleted.
+ *
+ * Bill numbers restart at 00001 with every reset, so leaving the old PDFs would put two different
+ * invoices of the same name in the same folder. They go to Drive's bin, where they can be recovered
+ * for 30 days — and a backup taken beforehand keeps them for good. Back_up is never touched.
+ */
+function clearInvoicePdfs_() {
+    try {
+        return trashInvoiceFiles_();
+    } catch (e) {
+        console.error("clearInvoicePdfs_", e);
+        return 0;
+    }
 }
 
 /* ---------- reset everything, catalogue included (starting the shop from nothing) ---------- */
@@ -196,8 +237,11 @@ function resetAll() {
         "Reset EVERYTHING",
         "This does everything “Reset test data” does, and also permanently deletes every product, size, " +
             "brand and category — prices, SKUs and barcodes included.\n\n" +
+            "Moved to Drive's bin: the invoice PDFs, and " + countProductImages_() + " product photos.\n" +
+            "Back_up is not touched, so a backup taken beforehand still has everything.\n\n" +
             "Kept: staff and their passwords, branches, and shop settings. The standard categories come back empty.\n\n" +
-            "Make a backup first (File → Make a copy). Type ERASE ALL to continue:",
+            backupStatusLine_() +
+            "Type ERASE ALL to continue:",
         ui.ButtonSet.OK_CANCEL,
     );
     if (r.getSelectedButton() !== ui.Button.OK || r.getResponseText().trim().toUpperCase() !== "ERASE ALL") {
@@ -205,11 +249,14 @@ function resetAll() {
         return;
     }
     const res = resetAll_();
+    res.photos = trashProductImages_(function () { return true; }); // the products are gone; their photos go too
     const lines = Object.keys(res.cleared)
         .filter((t) => res.cleared[t])
         .map((t) => "  " + t + ": " + res.cleared[t]);
     alert_(
         "Everything cleared.\n\n" + (lines.length ? "Rows removed:\n" + lines.join("\n") + "\n\n" : "") +
+            "Moved to Drive's bin: the invoice PDFs and " + res.photos + " product " + (res.photos === 1 ? "photo" : "photos") +
+            ".\nBack_up was not touched — your backups are safe.\n\n" +
             "The catalogue is empty — add products, or import them from a CSV.\n" +
             "Bill numbers restart at 00001. Everyone has been logged out; log in again on each phone.",
     );
