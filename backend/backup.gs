@@ -103,6 +103,33 @@ function copyInvoiceMonth_(ym, dest, inTime) {
     return copied;
 }
 
+/**
+ * Copy the product photos taken in the app.
+ *
+ * They live in their own folder at the top of Drive, not beside the sheet ([catalog.gs] uploads them
+ * there), and the catalogue only stores a link to each one — so without this a restored shop would
+ * come back with its photos pointing at a folder that might no longer exist. Photos imported from the
+ * website are links to the website and were never in Drive, so they are not here to copy.
+ *
+ * Returns how many were copied and whether it got to the end before the time ran out.
+ */
+function copyImages_(dest, inTime) {
+    const it = DriveApp.getFoldersByName(APP.IMAGE_FOLDER);
+    if (!it.hasNext()) return { copied: 0, done: true }; // no photos uploaded from the app
+    const from = it.next();
+    const to = subFolder_(dest, APP.IMAGE_FOLDER);
+    let copied = 0;
+    const files = from.getFiles();
+    while (files.hasNext()) {
+        if (!inTime()) return { copied, done: false };
+        const f = files.next();
+        if (fileNamed_(to, f.getName())) continue; // already copied by an earlier run
+        f.makeCopy(f.getName(), to);
+        copied++;
+    }
+    return { copied, done: true };
+}
+
 /** Every month that has invoices, oldest first, as "yyyy-MM". */
 function invoiceMonths_() {
     const out = [];
@@ -129,10 +156,11 @@ function invoiceMonths_() {
  * The marker file is the whole memory of the job: it lists the months still to do and how many files
  * have been copied so far, so a run that is cut short leaves everything the next one needs.
  */
-function backupInto_(folder, months, title, inTime) {
+function backupInto_(folder, months, title, inTime, withImages) {
     const busy = fileNamed_(folder, BACKUP_BUSY_);
     const before = fileText_(busy);
     let copied = parseInt(noteLine_(before, "Copied so far"), 10) || 0;
+    let photos = parseInt(noteLine_(before, "Photos so far"), 10) || 0;
     let sheet = false;
 
     const sheetName = ss_().getName() + " " + folder.getName();
@@ -148,20 +176,30 @@ function backupInto_(folder, months, title, inTime) {
         left.shift();
     }
 
-    const finished = !left.length;
+    // photos come last, and only for a full backup; a run that stops part-way through them is not finished
+    let imagesLeft = !!withImages;
+    if (!left.length && imagesLeft && inTime()) {
+        const r = copyImages_(folder, inTime);
+        photos += r.copied;
+        imagesLeft = !r.done;
+    }
+
+    const finished = !left.length && !imagesLeft;
     if (finished) {
         if (busy) busy.setTrashed(true);
         const b = fileNamed_(folder, BACKUP_BUSY_);
         if (b) b.setTrashed(true);
-        writeNote_(folder, BACKUP_DONE_, title + "\nFinished: " + nowStr_() + "\nInvoice files: " + copied + "\nSheet copy: " + sheetName);
+        writeNote_(folder, BACKUP_DONE_, title + "\nFinished: " + nowStr_() + "\nInvoice files: " + copied +
+            (withImages ? "\nPhoto files: " + photos : "") + "\nSheet copy: " + sheetName);
         clearBackupResume_();
     } else {
-        writeNote_(folder, BACKUP_BUSY_, title + "\nMonths: " + left.join(",") + "\nCopied so far: " + copied +
+        writeNote_(folder, BACKUP_BUSY_, title + "\nMonths: " + left.join(",") + "\nImages: " + (imagesLeft ? "yes" : "no") +
+            "\nCopied so far: " + copied + "\nPhotos so far: " + photos +
             "\nStarted: " + (noteLine_(before, "Started") || nowStr_()) +
             "\nStill running — it carries on by itself. Leave this folder alone until it says COMPLETE.");
         scheduleBackupResume_();
     }
-    return { sheet, invoices: copied, finished };
+    return { sheet, invoices: copied, photos, finished };
 }
 
 /** A one-off trigger a minute from now, to carry on where this run stopped. */
@@ -232,7 +270,7 @@ function resumeBackup() {
     const months = noteLine_(note, "Months").split(",").map((s) => s.trim()).filter(Boolean);
     const title = String(note).split("\n")[0] || "Backup " + folder.getName();
     try {
-        const r = backupInto_(folder, months, title, backupBudget_());
+        const r = backupInto_(folder, months, title, backupBudget_(), noteLine_(note, "Images") === "yes");
         if (r.finished) logBackup_("Backup finished " + folder.getName(), r);
         return r;
     } catch (e) {
@@ -263,12 +301,15 @@ function backupNow() {
         const all = r === ui.Button.YES;
         const months = all ? invoiceMonths_() : [todayStr_().slice(0, 7)];
         const folder = subFolder_(backupRoot_(), name);
-        const res = backupInto_(folder, months, all ? "Full backup" : "Backup of " + monthLabel_(months[0]), backupBudget_());
+        // a full backup also takes the product photos; a month's backup leaves them, since they
+        // rarely change and would otherwise be stored again every time
+        const res = backupInto_(folder, months, all ? "Full backup" : "Backup of " + monthLabel_(months[0]), backupBudget_(), all);
         logBackup_("Backup " + name, res);
         alert_(
             "Backup folder: Back_up/" + name + "\n\n" +
                 (res.sheet ? "Sheet copied.\n" : "Sheet copy was already there.\n") +
-                res.invoices + " invoice files copied.\n\n" +
+                res.invoices + " invoice files copied.\n" +
+                (all ? res.photos + " product photos copied.\n" : "") + "\n" +
                 (res.finished
                     ? "Finished — the folder says BACKUP COMPLETE."
                     : "Still running. It carries on by itself in about a minute; the folder says BACKUP IN PROGRESS until it is done."),
@@ -279,11 +320,45 @@ function backupNow() {
     }
 }
 
+/**
+ * Menu: run what the 1st-of-the-month job runs, for the month just ended.
+ * Also the way to redo a month whose backup failed — running it again only adds what is missing.
+ */
+function backupLastMonth() {
+    const ym = lastMonthOf_(todayStr_());
+    const ui = SpreadsheetApp.getUi();
+    const ask = ui.alert(
+        "Back up " + monthLabel_(ym),
+        "Copies this sheet and " + monthLabel_(ym) + "'s invoices into Back_up/" + ym + ".\n\n" +
+            "This is exactly what the backup on the 1st of the month does, so it is also the way to redo a month.\n" +
+            "Anything already in that folder is left alone.\n\nContinue?",
+        ui.ButtonSet.YES_NO,
+    );
+    if (ask !== ui.Button.YES) {
+        alert_("Nothing was changed.");
+        return;
+    }
+    try {
+        const res = monthlyBackup();
+        alert_(
+            "Backup folder: Back_up/" + ym + "\n\n" +
+                (res.sheet ? "Sheet copied.\n" : "Sheet copy was already there.\n") +
+                res.invoices + " invoice files copied.\n\n" +
+                (res.finished
+                    ? "Finished — the folder says BACKUP COMPLETE."
+                    : "Still running. It carries on by itself in about a minute."),
+        );
+    } catch (e) {
+        alert_("The backup could not finish:\n\n" + (e.message || e) + "\n\nNothing was lost — your data and invoices are untouched.");
+    }
+}
+
 /* ---------- telling you about it ---------- */
 
 function logBackup_(what, r) {
     log_({ user: { id: 0, name: "Backup" } }, "BACKUP", "Drive", "",
-        what + ": " + r.invoices + " invoice files" + (r.sheet ? " + sheet" : "") + (r.finished ? "" : " (still running)"));
+        what + ": " + r.invoices + " invoice files" + (r.photos ? " + " + r.photos + " photos" : "") +
+            (r.sheet ? " + sheet" : "") + (r.finished ? "" : " (still running)"));
 }
 
 function backupFailed_(what, e) {

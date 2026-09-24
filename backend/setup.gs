@@ -12,6 +12,7 @@ function onOpen() {
         .addItem("4. Reset EVERYTHING incl. products…", "resetAll")
         .addSeparator()
         .addItem("Back up now…", "backupNow")
+        .addItem("Back up last month", "backupLastMonth")
         .addItem("Reset a staff password…", "resetStaffPassword")
         .addItem("Log everyone out (after an update)", "logoutEveryone")
         .addItem("Email today's day close now", "emailDayCloseNow")

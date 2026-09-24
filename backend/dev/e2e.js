@@ -1304,5 +1304,100 @@ check("and it is in the activity log", bkEnv.ctx.rows_("Activity_Logs").some((l)
     bkEnv.ctx.rows_("Activity_Logs").slice(-3).map((l) => l.action));
 check("a successful backup is logged too", bkEnv.ctx.rows_("Activity_Logs").some((l) => l.action === "BACKUP"));
 
+// ---- backups: product photos, and running the monthly one by hand ----
+const b2Env = createEnv();
+const b2Drive = b2Env.drive;
+const b2Gp = b2Drive.root.createFolder("Groovy POS");
+b2Drive.sheetFile.parent = b2Gp;
+// the photo folder sits at the top of Drive, not beside the sheet — that is where uploads go
+const b2Images = b2Drive.root.createFolder("GroovyPOS_Images");
+b2Images.createFile({ name: "attar-1.jpg", mime: "image/jpeg", html: "photo one" });
+b2Images.createFile({ name: "attar-2.jpg", mime: "image/jpeg", html: "photo two" });
+b2Env.ctx.setupSheets();
+const b2Pwd = /Password: (\S+)/.exec(b2Env.alerts.pop())[1];
+const B2T = b2Env.call("login", { email: "owner@groovy.test", password: b2Pwd }).data.token;
+const b2Cat = b2Env.call("bootstrap", {}, B2T).data.catalog.categories[0].id;
+b2Env.call("saveProduct", {
+    name: "Photo Tester", category_id: b2Cat, gst_rate: 18,
+    variants: [{ size_label: "5ml", mrp: 100, sell_price: 100, cost: 40, opening_stock: 500, barcode: "B2-1" }],
+}, B2T);
+const b2Vid = b2Env.call("getCatalog", {}, B2T).data.variants.find((v) => v.barcode === "B2-1").id;
+const b2Owner = b2Env.ctx.findBy_("Users", "email", "owner@groovy.test");
+const b2Bill = (ref, at) =>
+    b2Env.ctx.apiCompleteSale_(
+        { client_ref: ref, lines: [{ variant_id: b2Vid, qty: 1 }], payments: [{ method: "cash", amount: 100 }], _at: at },
+        { user: b2Owner, token: "", branch_id: 1 },
+    ).data.sale;
+b2Bill("b2-1", "2026-08-11 10:00:00");
+b2Bill("b2-2", "2026-09-06 10:00:00");
+b2Env.ctx.savePendingInvoicePdfs();
+
+const b2Folder = (parent, name) => { const it = parent.getFoldersByName(name); return it.hasNext() ? it.next() : null; };
+const b2Root = () => b2Folder(b2Gp, "Back_up");
+const b2Named = (folder, name) => { const it = folder.getFilesByName(name); return it.hasNext() ? it.next() : null; };
+const b2Count = (folder) => { let n = 0; const f = folder.getFiles(); while (f.hasNext()) { if (!f.next().trashed) n++; } return n; };
+const b2Yes = 'SpreadsheetApp.getUi = function () { return { alert: function () { return "YES"; }, Button: { YES: "YES", NO: "NO", CANCEL: "CANCEL" }, ButtonSet: { YES_NO_CANCEL: 1, YES_NO: 2 } }; };';
+const b2No = 'SpreadsheetApp.getUi = function () { return { alert: function () { return "NO"; }, Button: { YES: "YES", NO: "NO", CANCEL: "CANCEL" }, ButtonSet: { YES_NO_CANCEL: 1, YES_NO: 2 } }; };';
+
+// a full backup takes the photos too
+require("vm").runInContext('backupStamp_ = function () { return "2026-09-25 10-00"; };', b2Env.ctx);
+require("vm").runInContext(b2Yes, b2Env.ctx);
+b2Env.ctx.backupNow();
+const b2Full = b2Folder(b2Root(), "2026-09-25 10-00");
+const b2FullImgs = b2Folder(b2Full, "GroovyPOS_Images");
+check("full backup: the product photos come too", !!b2FullImgs && b2Count(b2FullImgs) === 2, b2FullImgs ? b2Count(b2FullImgs) : "no folder");
+check("full backup: the photos are counted in the note", /Photo files: 2/.test(b2Named(b2Full, "BACKUP COMPLETE.txt").getBlob().getDataAsString()),
+    b2Named(b2Full, "BACKUP COMPLETE.txt").getBlob().getDataAsString());
+check("full backup: the invoices are still there", !!b2Folder(b2Full, "Sales_Invoices"));
+
+// a month-only backup leaves the photos alone
+require("vm").runInContext('backupStamp_ = function () { return "2026-09-25 11-00"; };', b2Env.ctx);
+require("vm").runInContext(b2No, b2Env.ctx);
+b2Env.ctx.backupNow();
+const b2Month = b2Folder(b2Root(), "2026-09-25 11-00");
+check("a month's backup does not copy the photos", !b2Folder(b2Month, "GroovyPOS_Images"));
+check("a month's backup still copies that month's invoices", !!b2Folder(b2Month, "Sales_Invoices"));
+
+// a full backup that runs out of time during the photos must not say COMPLETE
+require("vm").runInContext('backupStamp_ = function () { return "2026-09-25 12-00"; };', b2Env.ctx);
+require("vm").runInContext(b2Yes, b2Env.ctx);
+require("vm").runInContext('backupBudget_ = function () { var n = 0; return function () { return n++ < 6; }; };', b2Env.ctx);
+b2Env.ctx.backupNow();
+const b2Cut = b2Folder(b2Root(), "2026-09-25 12-00");
+const b2Busy = b2Named(b2Cut, "BACKUP IN PROGRESS.txt");
+check("cut short during the photos: not marked finished", !!b2Busy && !b2Named(b2Cut, "BACKUP COMPLETE.txt"), b2Busy ? "busy" : "no marker");
+check("cut short during the photos: the note remembers to do them", /Images: yes/.test(b2Busy.getBlob().getDataAsString()), b2Busy.getBlob().getDataAsString());
+require("vm").runInContext('backupBudget_ = function () { return function () { return true; }; };', b2Env.ctx);
+b2Env.ctx.resumeBackup();
+check("resumed: the photos are finished off", b2Count(b2Folder(b2Cut, "GroovyPOS_Images")) === 2, b2Count(b2Folder(b2Cut, "GroovyPOS_Images") || b2Cut));
+check("resumed: only then is it COMPLETE", !!b2Named(b2Cut, "BACKUP COMPLETE.txt") && !b2Named(b2Cut, "BACKUP IN PROGRESS.txt"));
+
+// "Back up last month" from the menu does what the 1st-of-the-month job does
+require("vm").runInContext('todayStr_ = function () { return "2026-09-20"; };', b2Env.ctx);
+require("vm").runInContext(b2Yes, b2Env.ctx);
+b2Env.ctx.backupLastMonth();
+const b2Aug = b2Folder(b2Root(), "2026-08");
+check("back up last month: the folder is named for August", !!b2Aug);
+check("back up last month: August's invoice, and the sheet", !!b2Folder(b2Aug, "Sales_Invoices") && !!b2Named(b2Aug, "Groovy POS Data 2026-08"));
+check("back up last month: no photos in the monthly one", !b2Folder(b2Aug, "GroovyPOS_Images"));
+check("back up last month: says it finished", !!b2Named(b2Aug, "BACKUP COMPLETE.txt"));
+const b2AugFiles = b2Count(b2Aug);
+b2Env.ctx.backupLastMonth();
+check("back up last month again: nothing is copied twice", b2Count(b2Aug) === b2AugFiles, { before: b2AugFiles, after: b2Count(b2Aug) });
+require("vm").runInContext(b2No, b2Env.ctx);
+b2Env.ctx.backupLastMonth();
+check("back up last month: saying no changes nothing", /Nothing was changed/.test(b2Env.alerts[b2Env.alerts.length - 1]), b2Env.alerts[b2Env.alerts.length - 1]);
+
+// a shop with no photos at all is fine
+const b2NoImg = createEnv();
+b2NoImg.drive.sheetFile.parent = b2NoImg.drive.root.createFolder("Groovy POS");
+b2NoImg.ctx.setupSheets();
+b2NoImg.alerts.pop();
+require("vm").runInContext('backupStamp_ = function () { return "2026-09-25 13-00"; };', b2NoImg.ctx);
+require("vm").runInContext(b2Yes, b2NoImg.ctx);
+b2NoImg.ctx.backupNow();
+const b2Empty = (() => { const it = b2NoImg.drive.root.getFolders(); while (it.hasNext()) { const f = it.next(); if (f.getName() === "Groovy POS") { const b = f.getFoldersByName("Back_up"); if (b.hasNext()) return b.next().getFoldersByName("2026-09-25 13-00").next(); } } return null; })();
+check("a shop with no photos backs up without complaint", !!b2Empty && !!b2Named(b2Empty, "BACKUP COMPLETE.txt"));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
