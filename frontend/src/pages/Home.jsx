@@ -8,8 +8,8 @@ import TopBar from "../components/TopBar";
 import { Seg, SkeletonList } from "../components/ui";
 import BarChart from "../components/BarChart";
 
-// role pill next to the greeting — brown for admin, gold for manager, cream for salesman
-const ROLE_TONE = { admin: "dark", manager: "gold", salesman: "" };
+// role pill next to the greeting — brown for admin, gold for manager, cream for salesperson
+const ROLE_TONE = { admin: "dark", manager: "gold", salesperson: "" }; // a stale cached role falls through to the same plain pill
 
 export default function Home() {
   const { user, isManager, toast, settings, branchId, isAllBranches } = useApp();
@@ -160,7 +160,7 @@ export default function Home() {
             <div className="card mt">
               <div className="card-title">
                 <h3 className="row gap-s">
-                  <Trophy size={18} color="var(--gold-dark)" /> {isManager ? "Salesman leaderboard" : "My performance"}
+                  <Trophy size={18} color="var(--gold-dark)" /> {isManager ? "Salespeople leaderboard" : "My performance"}
                 </h3>
               </div>
               <Seg

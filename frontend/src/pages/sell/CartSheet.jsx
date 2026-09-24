@@ -139,7 +139,7 @@ export default function CartSheet({ open, onClose, preview, onCheckout, onHeld }
           );
         })}
       </div>
-      {role === "salesman" && cart.lines.length > 0 && (
+      {role === "salesperson" && cart.lines.length > 0 && (
         <div className="tiny muted mt center">You can give up to {settings.salesman_max_disc_pct || 10}% discount. Ask a manager for more.</div>
       )}
       {confirmNode}

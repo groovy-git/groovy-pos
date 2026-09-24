@@ -16,9 +16,24 @@ function newSalt_() {
     return uuid_().slice(0, 16);
 }
 
+/**
+ * The role, by its current name.
+ *
+ * This role used to be called "salesman" and staff rows written before the rename still say that.
+ * Everything reads roles through here, so both spellings work and only the new one is ever written —
+ * otherwise a row saying the old word would match nothing and that person would be refused every
+ * action. The rows themselves are rewritten once by migrateRoleNames_().
+ */
+const OLD_SALESPERSON_ROLE_ = "sales" + "man"; // written in pieces so a search-and-replace can't eat it
+
+function roleName_(r) {
+    const s = str_(r);
+    return s === OLD_SALESPERSON_ROLE_ ? "salesperson" : s;
+}
+
 function publicUser_(u) {
     return {
-        id: u.id, name: u.name, email: u.email, phone: u.phone, role: u.role, active: u.active,
+        id: u.id, name: u.name, email: u.email, phone: u.phone, role: roleName_(u.role), active: u.active,
         home_branch_id: u.role === "admin" ? 0 : homeBranch_(u),
         branch_ids: allowedBranchIds_(u), // active branches this person may work at
     };
@@ -71,7 +86,9 @@ function authenticate_(token) {
         cache.remove("s_" + token);
         fail_("Account inactive. Contact admin.", "AUTH_EXPIRED");
     }
-    return { user, token };
+    // a copy, so a row still holding the old role name reads correctly everywhere without the
+    // cached sheet row being altered behind the back of whatever else reads it this request
+    return { user: Object.assign({}, user, { role: roleName_(user.role) }), token };
 }
 
 function endSession_(token) {
@@ -228,7 +245,7 @@ function apiChangePassword_(p, ctx) {
 /* ---------- user management (admin) ---------- */
 
 function apiListUsers_(p, ctx) {
-    // just the salesman column — the rest of the bill is not needed to answer "has any?"
+    // just the salesperson column — the rest of the bill is not needed to answer "has any?"
     const sold = {};
     columnValues_("Sales", "salesman_id").forEach((v) => (sold[v] = true));
     return {
@@ -246,14 +263,14 @@ function apiListSellers_(p, ctx) {
     return {
         data: rows_("Users")
             .filter((u) => u.active && (!ctx.branch_id || allowedBranchIds_(u).indexOf(ctx.branch_id) >= 0))
-            .map((u) => ({ id: u.id, name: u.name, role: u.role })),
+            .map((u) => ({ id: u.id, name: u.name, role: roleName_(u.role) })),
     };
 }
 
 function apiSaveUser_(p, ctx) {
     const name = str_(p.name);
     const email = str_(p.email).toLowerCase();
-    const role = str_(p.role);
+    const role = roleName_(p.role); // an app not yet updated still sends the old name
     if (!name) fail_("Name is required");
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail_("Valid email is required");
     if (ROLES.indexOf(role) < 0) fail_("Invalid role");
@@ -267,7 +284,7 @@ function apiSaveUser_(p, ctx) {
             if (!u) fail_("User not found");
             if (dup && dup.id !== u.id) fail_("Email already in use");
             if (u.id === ctx.user.id && role !== "admin") fail_("You cannot remove your own admin role");
-            const wasRole = u.role;
+            const wasRole = roleName_(u.role);
             u.name = name;
             u.email = email;
             u.phone = str_(p.phone);
@@ -336,4 +353,24 @@ function escHtml_(s) {
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
+}
+
+/**
+ * One-time rewrite of the old role name in the Users sheet.
+ *
+ * Nothing depends on this having run — roleName_() means both spellings work — so it can happen
+ * quietly whenever the sheet is next touched, and the flag means it only happens once. It is called
+ * from Setup and from the quarter-hourly invoice job, so the owner has nothing to run.
+ */
+function migrateRoleNames_() {
+    // No "already done" marker: staff is a handful of rows, so looking is as cheap as remembering,
+    // and this way a row that turns up with the old name later — restored from a backup, or typed
+    // into the sheet by hand — is put right too instead of being left behind forever.
+    if (!rows_("Users").some((u) => str_(u.role) === OLD_SALESPERSON_ROLE_)) return 0;
+    return withLock_(() => {
+        const rows = rows_("Users").filter((u) => str_(u.role) === OLD_SALESPERSON_ROLE_);
+        rows.forEach((u) => (u.role = "salesperson"));
+        if (rows.length) writeColumn_("Users", rows, "role");
+        return rows.length;
+    });
 }

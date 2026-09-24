@@ -2,12 +2,12 @@
 
 function canSeeSale_(ctx, s) {
     if (ctx.user.role === "admin") return true;
-    if (ctx.user.role === "salesman") return s.salesman_id === ctx.user.id || s.created_by === ctx.user.id;
+    if (ctx.user.role === "salesperson") return s.salesman_id === ctx.user.id || s.created_by === ctx.user.id;
     return allowedBranchIds_(ctx.user).indexOf(bid_(s.branch_id)) >= 0; // manager: branches they work at
 }
 
 function saleDetail_(s, ctx) {
-    const hideCost = !ctx || ctx.user.role === "salesman"; // cost prices are for managers only
+    const hideCost = !ctx || ctx.user.role === "salesperson"; // cost prices are for managers only
     // one bill's lines, not every line ever sold: both tables are written in bill order, so the
     // rows for this bill sit together and can be read as a small block
     const items = windowRows_("Sale_Items", "sale_id", s.id, s.id);
@@ -53,9 +53,9 @@ function apiCompleteSale_(p, ctx) {
 
         const role = ctx.user.role;
         const sellerId = Number(p.salesman_id || ctx.user.id);
-        if (role === "salesman" && sellerId !== ctx.user.id) fail_("Salesmen can only bill under their own name");
+        if (role === "salesperson" && sellerId !== ctx.user.id) fail_("A salesperson can only bill under their own name");
         const seller = findBy_("Users", "id", sellerId);
-        if (!seller || !seller.active) fail_("Selected salesman is not active");
+        if (!seller || !seller.active) fail_("Selected salesperson is not active");
         if (allowedBranchIds_(seller).indexOf(branch) < 0) fail_(seller.name + " does not work at " + branchName_(branch));
 
         const s = settingsMap_();
@@ -82,11 +82,11 @@ function apiCompleteSale_(p, ctx) {
 
         const bill = computeBill_(priced, p.bill_disc, s.round_off !== "no");
 
-        if (role === "salesman") {
+        if (role === "salesperson") {
             const cap = num_(s.salesman_max_disc_pct, 10);
             const disc = bill.item_disc + bill.bill_disc;
             if (bill.gross > 0 && (disc / bill.gross) * 100 > cap + 0.001)
-                fail_("Discount limit for salesman is " + cap + "%. Ask a manager.");
+                fail_("Discount limit for a salesperson is " + cap + "%. Ask a manager.");
         }
 
         // payments
@@ -179,7 +179,7 @@ function apiListSales_(p, ctx) {
     const to = str_(p.to) || todayStr_();
     // only the bills in the range are read off the sheet, not the whole history
     let rows = windowRows_("Sales", "date", from, to);
-    if (ctx.user.role === "salesman") rows = rows.filter((s) => s.salesman_id === ctx.user.id);
+    if (ctx.user.role === "salesperson") rows = rows.filter((s) => s.salesman_id === ctx.user.id);
     else {
         rows = rows.filter((s) => inBranch_(ctx, s.branch_id));
         if (p.salesman_id) rows = rows.filter((s) => s.salesman_id === Number(p.salesman_id));
@@ -389,7 +389,7 @@ function apiHoldBill_(p, ctx) {
 
 function apiListHeld_(p, ctx) {
     let rows = rows_("Held_Bills").filter((h) => inBranch_(ctx, h.branch_id));
-    if (ctx.user.role === "salesman") rows = rows.filter((h) => h.user_id === ctx.user.id || h.salesman_id === ctx.user.id);
+    if (ctx.user.role === "salesperson") rows = rows.filter((h) => h.user_id === ctx.user.id || h.salesman_id === ctx.user.id);
     const users = indexBy_(rows_("Users"), "id");
     return {
         data: rows
@@ -406,7 +406,7 @@ function apiDeleteHeld_(p, ctx) {
     return withLock_(() => {
         const h = findBy_("Held_Bills", "id", Number(p.id));
         if (!h) return { message: "Already removed" };
-        if (ctx.user.role === "salesman" && h.user_id !== ctx.user.id) fail_("Not your held bill");
+        if (ctx.user.role === "salesperson" && h.user_id !== ctx.user.id) fail_("Not your held bill");
         if (ctx.user.role !== "admin" && allowedBranchIds_(ctx.user).indexOf(bid_(h.branch_id)) < 0) fail_("This held bill belongs to another branch");
         deleteRow_("Held_Bills", h);
         return { message: "Held bill removed" };

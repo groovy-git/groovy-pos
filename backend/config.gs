@@ -12,7 +12,7 @@ const APP = {
     IMAGE_FOLDER: "GroovyPOS_Images",
 };
 
-const ROLES = ["admin", "manager", "salesman"];
+const ROLES = ["admin", "manager", "salesperson"];
 
 const SCHEMA = {
     Users: {

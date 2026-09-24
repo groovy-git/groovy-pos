@@ -20,13 +20,13 @@ function rangeOf_(p) {
 }
 
 /**
- * Scoped data for the caller (a salesman sees only their own).
+ * Scoped data for the caller (a salesperson sees only their own).
  *
  * `from`/`to` limit what is read off the sheet — a report about one day should not read five years
  * of bills. Leaving them out reads everything, as before.
  */
 function scope_(ctx, from, to) {
-    const own = ctx.user.role === "salesman" ? ctx.user.id : 0;
+    const own = ctx.user.role === "salesperson" ? ctx.user.id : 0;
     const saleRows = from || to ? windowRows_("Sales", "date", from || null, to || null) : rows_("Sales");
     const returnRows = from || to ? windowRows_("Returns", "at", from || null, to || null) : rows_("Returns");
     const sales = saleRows.filter((s) => s.status !== "voided" && (!own || s.salesman_id === own) && inBranch_(ctx, s.branch_id));
@@ -63,10 +63,10 @@ function saleItemsFor_(saleIds) {
 }
 
 /**
- * Who brought each customer in: the salesman on their first bill ever. Returns {customer_id: sale id}.
+ * Who brought each customer in: the salesperson on their first bill ever. Returns {customer_id: sale id}.
  *
  * Built from EVERY bill, not the caller's scoped set, so a repeat customer is never counted as new
- * again and credit only goes to whoever billed them first — whichever branch or salesman that was.
+ * again and credit only goes to whoever billed them first — whichever branch or salesperson that was.
  * Walk-ins (no phone, so no customer record) and voided bills are skipped, so a customer whose first
  * bill was cancelled counts again on their next one. Earliest date wins, lowest id breaks a tie,
  * which keeps backdated rows (demo data) right.
@@ -128,7 +128,7 @@ function apiDashboard_(p, ctx) {
     PAYMENT_METHODS.forEach((m) => (payToday[m] = 0));
     windowRows_("Payments", "at", today, today).forEach((x) => {
         if (d10_(x.at) !== today) return;
-        if (!saleIds[x.sale_id]) return; // other salesman's, or a voided bill (payment + reversal both skipped)
+        if (!saleIds[x.sale_id]) return; // other salesperson's, or a voided bill (payment + reversal both skipped)
         payToday[x.method] = r2_((payToday[x.method] || 0) + x.amount);
     });
 
@@ -243,7 +243,7 @@ function leaderboard_(sales, returns, from, to) {
 
 function apiReport_(p, ctx) {
     const type = str_(p.type);
-    const isSalesman = ctx.user.role === "salesman";
+    const isSalesman = ctx.user.role === "salesperson";
     if (isSalesman && ["day_close", "salesman_performance"].indexOf(type) < 0) fail_("Access denied");
     const fns = {
         day_close: reportDayClose_,
@@ -374,7 +374,7 @@ function reportRegister_(p, ctx) {
         .filter((s) => inRange_(s.date, from, to))
         .map((s) => ({
             invoice_no: s.invoice_no, date: s.date, customer: s.customer_name || "Walk-in", phone: s.customer_phone,
-            gstin: s.customer_gstin, salesman: s.salesman_name, taxable: s.taxable, cgst: s.cgst, sgst: s.sgst,
+            gstin: s.customer_gstin, salesperson: s.salesman_name, taxable: s.taxable, cgst: s.cgst, sgst: s.sgst,
             round_off: s.round_off, total: s.grand_total, refunded: s.refunded, status: s.status,
         }));
     const cns = returns

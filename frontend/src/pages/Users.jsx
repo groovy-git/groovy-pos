@@ -8,7 +8,7 @@ import { ROLE_LABEL } from "../lib/format";
 import TopBar from "../components/TopBar";
 import { Avatar, Button, Empty, Field, Seg, Sheet, SkeletonList, useConfirm } from "../components/ui";
 
-const ROLE_ORDER = { admin: 0, manager: 1, salesman: 2 };
+const ROLE_ORDER = { admin: 0, manager: 1, salesperson: 2 };
 
 export default function UsersPage() {
   const { toast, user, setSellers, branches, multiBranch } = useApp();
@@ -27,7 +27,7 @@ export default function UsersPage() {
     if (list) setSellers(list.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name, role: u.role })));
   }, [list, setSellers]);
 
-  // active first, then admins, managers, salesmen, then by name. An unknown role sorts last rather
+  // active first, then admins, managers, salespeople, then by name. An unknown role sorts last rather
   // than breaking the page. The copy is because sort() would otherwise mutate state in place.
   const ordered = useMemo(
     () =>
@@ -75,7 +75,7 @@ export default function UsersPage() {
           </div>
         )}
       </div>
-      <button className="fab" onClick={() => setEdit({ name: "", email: "", phone: "", role: "salesman", branch_id: branches[0] ? branches[0].id : 0, works_at: [] })}>
+      <button className="fab" onClick={() => setEdit({ name: "", email: "", phone: "", role: "salesperson", branch_id: branches[0] ? branches[0].id : 0, works_at: [] })}>
         <Plus size={20} /> Add staff
       </button>
       <UserSheet
@@ -147,7 +147,7 @@ function UserSheet({ u, onClose, onSaved }) {
           value={f.role}
           onChange={(r) => !self && setF({ ...f, role: r })}
           options={[
-            { value: "salesman", label: "Salesman" },
+            { value: "salesperson", label: "Salesperson" },
             { value: "manager", label: "Manager" },
             { value: "admin", label: "Admin" },
           ]}

@@ -7,7 +7,7 @@
 
 const A_ = ["admin"];
 const AM_ = ["admin", "manager"];
-const ALL_ = ["admin", "manager", "salesman"];
+const ALL_ = ["admin", "manager", "salesperson"];
 
 // built lazily: Apps Script evaluates files in load order, so top-level code
 // must not reference functions from other files
@@ -43,7 +43,7 @@ function actions_() {
     dashboard: { fn: apiDashboard_, roles: ALL_ },
     report: { fn: apiReport_, roles: ALL_ }, // per-report check inside
     movements: { fn: apiMovements_, roles: ALL_ },
-    emailDayClose: { fn: apiEmailDayClose_, roles: ALL_ }, // salesman gets own figures only
+    emailDayClose: { fn: apiEmailDayClose_, roles: ALL_ }, // salesperson gets own figures only
 
     // admin + manager
     saveBrand: { fn: apiSaveBrand_, roles: AM_ },

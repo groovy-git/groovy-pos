@@ -1,6 +1,6 @@
 # Groovy Fragrances POS
 
-A mobile-first point-of-sale system for Groovy Fragrances. It handles billing with barcode scanning, loose attar sold by ml or tola, GST invoices, split payments, stock, expenses, and reports that show each salesman's sales.
+A mobile-first point-of-sale system for Groovy Fragrances. It handles billing with barcode scanning, loose attar sold by ml or tola, GST invoices, split payments, stock, expenses, and reports that show each salesperson's sales.
 
 **How it fits together**
 
@@ -109,10 +109,10 @@ The app prints an **80 mm receipt** or an **A4 tax invoice** using the phone's o
 
 1. Log in as admin, then open **More → Settings**:
     - **Shop** tab: enter the GSTIN, address and bill footer.
-    - **Billing** tab: check the **salesman discount limit**, the **return window** and **1 tola = 12 ml**.
+    - **Billing** tab: check the **salesperson discount limit**, the **return window** and **1 tola = 12 ml**.
     - **Categories** tab: confirm the HSN codes and GST rates with your accountant.
     - You can add your own categories (e.g. _Bakhoor_) and hide ones you don't sell. A category can be deleted only if no product uses it.
-2. Go to **More → Staff** and add managers and salesmen, each with their own email and password.
+2. Go to **More → Staff** and add managers and salespeople, each with their own email and password.
 3. Add products. Either:
     - **Stock → Import**: download the template, fill it in Excel or Google Sheets, then upload it as CSV (**delete the template's sample rows first**). One row per size; rows with the same brand + product become sizes of one product.
         - **Required:** `product`, `category`, `sell_price`, and `size_label` for packed items.
@@ -128,7 +128,7 @@ The app prints an **80 mm receipt** or an **A4 tax invoice** using the phone's o
 **Daily use**
 
 - **Sell:** scan or tap items, then **View bill → Checkout**. Enter the customer's mobile number (optional), choose Cash, UPI or Card (tap **Split payment** to combine them), then tap **Complete**. Share the bill on WhatsApp or print it.
-- **End of day:** go to **More → Reports → Day close**. It shows the cash you should have in the drawer and a breakdown by salesman.
+- **End of day:** go to **More → Reports → Day close**. It shows the cash you should have in the drawer and a breakdown by salesperson.
 
 ## Branches (more than one shop)
 
@@ -161,7 +161,7 @@ If you have only one branch, none of this shows. The app works exactly like a si
 ## Day-close emails
 
 - **Email button (anyone):** go to **Reports → Day close → Email**.
-    - A salesman's email contains only their own sales. A manager's or admin's covers the whole branch.
+    - A salesperson's email contains only their own sales. A manager's or admin's covers the whole branch.
     - Tick **Send me a copy** to get a copy yourself.
     - Each person can send up to 5 of these a day.
 - **Nightly email (admin, optional):** go to **More → Settings → Email**.

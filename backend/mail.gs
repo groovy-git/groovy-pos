@@ -1,7 +1,7 @@
 /**
  * Day-close emails.
  *  A) apiEmailDayClose_ — any staff member emails the day close from the app
- *     (salesman: own figures only; manager/admin: whole shop).
+ *     (a salesperson gets their own figures only; manager/admin: whole shop).
  *  B) sendNightlyReport — time-driven trigger that emails the whole-shop day close every night.
  *     Switched on/off from Settings; syncNightlyTrigger_ installs or removes the trigger.
  * Emails are sent from the Google account that owns this script.
@@ -54,8 +54,8 @@ const METHOD_NAME_ = { cash: "Cash", upi: "UPI", card: "Card" };
 function dayCloseMail_(d, s, opt) {
     const biz = s.business_name || "Groovy Fragrances";
     const where = d.branch_name && activeBranches_().length > 1 ? d.branch_name : "";
-    const scope = (opt.salesman ? opt.salesman : "Whole shop") + (where ? " · " + where : "");
-    const subject = biz + (where ? " " + where : "") + " — Day close " + dateNice_(d.date) + " — " + inrText_(d.net) + (opt.salesman ? " (" + opt.salesman + ")" : "");
+    const scope = (opt.salesperson ? opt.salesperson : "Whole shop") + (where ? " · " + where : "");
+    const subject = biz + (where ? " " + where : "") + " — Day close " + dateNice_(d.date) + " — " + inrText_(d.net) + (opt.salesperson ? " (" + opt.salesperson + ")" : "");
     const td = 'style="padding:6px 8px;border-bottom:1px solid #EBE3D9"';
     const tdr = 'style="padding:6px 8px;border-bottom:1px solid #EBE3D9;text-align:right;white-space:nowrap"';
     const th = 'style="padding:6px 8px;text-align:left;font-size:12px;color:#7A716A;border-bottom:2px solid #EBE3D9"';
@@ -107,7 +107,7 @@ function dayCloseMail_(d, s, opt) {
         '<h3 style="font-family:Georgia,serif;color:#654321;margin:18px 0 6px">Money by method</h3>' +
         '<table style="width:100%;border-collapse:collapse;font-size:14px"><tr><th ' + th + ">Method</th><th " + thr + ">In</th><th " + thr +
         ">Refund</th><th " + thr + ">Net</th></tr>" + methods + "</table>" +
-        (opt.salesman ? "" :
+        (opt.salesperson ? "" :
             '<table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:8px">' +
             (d.cash_expenses ? "<tr><td " + td + ">Cash expenses paid</td><td " + tdr + ">−" + inrText_(d.cash_expenses) + "</td></tr>" : "") +
             '<tr><td style="padding:8px;font-weight:700;font-size:16px;border-top:2px solid #1A1A1A">Cash in drawer</td>' +
@@ -122,9 +122,9 @@ function dayCloseMail_(d, s, opt) {
                   "</td><td " + tdr + ">" + b.bills + "</td><td " + tdr + ">" + inrText_(b.returns) + "</td><td " + tdr + "><b>" + inrText_(b.net) + "</b></td></tr>").join("") +
               "</table>"
             : "") +
-        '<h3 style="font-family:Georgia,serif;color:#654321;margin:18px 0 6px">' + (opt.salesman ? "Your sales" : "By salesman") + "</h3>" +
+        '<h3 style="font-family:Georgia,serif;color:#654321;margin:18px 0 6px">' + (opt.salesperson ? "Your sales" : "By salesperson") + "</h3>" +
         (sellers
-            ? '<table style="width:100%;border-collapse:collapse;font-size:14px"><tr><th ' + th + ">Salesman</th><th " + thr + ">Bills</th><th " + thr +
+            ? '<table style="width:100%;border-collapse:collapse;font-size:14px"><tr><th ' + th + ">Salesperson</th><th " + thr + ">Bills</th><th " + thr +
               ">Returns</th><th " + thr + ">Net</th></tr>" + sellers + "</table>"
             : '<div style="color:#7A716A">No sales.</div>') +
         (items.length
@@ -144,7 +144,7 @@ function dayCloseMail_(d, s, opt) {
         "Net sales: " + inrText_(d.net) + "   Bills: " + d.bills + "   Discounts: " + inrText_(d.discounts) + "   Returns: " + inrText_(d.returns),
         "",
         Object.keys(d.methods).map((m) => (METHOD_NAME_[m] || m) + ": " + inrText_(d.methods[m].net)).join("   "),
-        opt.salesman ? "" : "Cash in drawer (expected): " + inrText_(d.expected_cash),
+        opt.salesperson ? "" : "Cash in drawer (expected): " + inrText_(d.expected_cash),
         "",
         d.by_salesman
             .map((r) =>
@@ -190,10 +190,10 @@ function apiEmailDayClose_(p, ctx) {
     const sent = num_(cache.get(key), 0);
     if (sent >= MAX_MANUAL_EMAILS_PER_DAY_) fail_("You've already sent " + sent + " day-close emails today.");
 
-    const isSalesman = ctx.user.role === "salesman";
+    const isSalesman = ctx.user.role === "salesperson";
     const d = reportDayClose_({ date }, ctx);
     const mail = dayCloseMail_(d, settingsMap_(), {
-        salesman: isSalesman ? ctx.user.name : "",
+        salesperson: isSalesman ? ctx.user.name : "",
         footer: "Sent by " + ctx.user.name + " from Groovy POS on " + nowStr_().slice(0, 16),
     });
     const cc = p.copy_me && ctx.user.email && to.indexOf(ctx.user.email) < 0 ? ctx.user.email : "";
@@ -224,7 +224,7 @@ function sendBranchDayCloses_(skipEmpty, footer) {
         const sys = { user: { id: 0, name: "Nightly report", role: "admin", email: "" }, branch_id: b.id };
         const d = reportDayClose_({ date }, sys);
         if (skipEmpty && !d.bills && !d.returns && !d.voided.length) return b.name + ": skipped (no sales)";
-        sendMail_(to, dayCloseMail_(d, s, { salesman: "", footer }), {});
+        sendMail_(to, dayCloseMail_(d, s, { salesperson: "", footer }), {});
         log_(sys, "EMAIL", "Reports", date, b.name + " day close sent to " + to.length + " address(es)");
         return b.name + ": sent";
     });

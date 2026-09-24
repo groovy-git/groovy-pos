@@ -357,7 +357,7 @@ export default function ProductForm({ id }) {
                 <Field label={loose ? "Selling price per ml" : "Selling price"}>
                   <MoneyInput value={String(v.sell_price ?? "")} onChange={(x) => setV(i, { sell_price: x })} />
                 </Field>
-                <Field label={loose ? "Cost per ml" : "Cost price"} hint="Hidden from salesmen">
+                <Field label={loose ? "Cost per ml" : "Cost price"} hint="Hidden from salespeople">
                   <MoneyInput value={String(v.cost ?? "")} onChange={(x) => setV(i, { cost: x })} />
                 </Field>
                 {!v.id ? (

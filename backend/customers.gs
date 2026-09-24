@@ -70,7 +70,7 @@ function apiCustomerHistory_(p, ctx) {
     const c = findById_("Customers", p.id);
     if (!c) fail_("Customer not found");
     let sales = windowRows_("Sales", "customer_id", c.id, c.id).filter((s) => s.customer_id === c.id);
-    if (ctx.user.role === "salesman") sales = sales.filter((s) => s.salesman_id === ctx.user.id);
+    if (ctx.user.role === "salesperson") sales = sales.filter((s) => s.salesman_id === ctx.user.id);
     return {
         data: {
             customer: customerOut_(c),

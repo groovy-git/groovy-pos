@@ -39,14 +39,14 @@ const T = login.token;
 check("admin role", login.user.role === "admin");
 
 // ---- users ----
-ok(call("saveUser", { name: "Sameer", email: "sameer@x.in", role: "salesman", password: "secret1" }, T), "add salesman");
-ok(call("saveUser", { name: "Ayesha", email: "ayesha@x.in", role: "salesman", password: "secret2" }, T), "add salesman 2");
+ok(call("saveUser", { name: "Sameer", email: "sameer@x.in", role: "salesperson", password: "secret1" }, T), "add salesperson");
+ok(call("saveUser", { name: "Ayesha", email: "ayesha@x.in", role: "salesperson", password: "secret2" }, T), "add salesperson 2");
 ok(call("saveUser", { name: "Imran", email: "imran@x.in", role: "manager", password: "secret3" }, T), "add manager");
-const S1 = ok(call("login", { email: "sameer@x.in", password: "secret1" }), "salesman login").token;
+const S1 = ok(call("login", { email: "sameer@x.in", password: "secret1" }), "salesperson login").token;
 const S2 = ok(call("login", { email: "ayesha@x.in", password: "secret2" }), "salesman2 login").token;
 const M = ok(call("login", { email: "imran@x.in", password: "secret3" }), "manager login").token;
-check("salesman cannot list users", call("listUsers", {}, S1).code === "FORBIDDEN");
-check("salesman cannot add product", call("saveProduct", {}, S1).code === "FORBIDDEN");
+check("salesperson cannot list users", call("listUsers", {}, S1).code === "FORBIDDEN");
+check("salesperson cannot add product", call("saveProduct", {}, S1).code === "FORBIDDEN");
 
 // ---- catalog ----
 const boot = ok(call("bootstrap", {}, T), "bootstrap");
@@ -80,7 +80,7 @@ const vMusk = catg.variants.find((v) => v.barcode === bc);
 const vBottle = catg.variants.find((v) => v.barcode === "GF900001");
 check("leading zero kept", !!vAsad, catg.variants.map((v) => v.barcode));
 check("loose unit ml", vMusk.unit === "ml" && vMusk.size_label === "Loose (per ml)");
-check("salesman catalog hides cost", call("getCatalog", {}, S1).data.variants.every((v) => v.avg_cost === undefined));
+check("salesperson catalog hides cost", call("getCatalog", {}, S1).data.variants.every((v) => v.avg_cost === undefined));
 
 // ---- stock in (repeat scans merge) ----
 const si = ok(call("stockIn", {
@@ -90,7 +90,7 @@ const si = ok(call("stockIn", {
 check("stock in merged to 5", si.stock.find((s) => s.id === vAsad.id).stock_qty === 5, si);
 catg = ok(call("getCatalog", {}, T), "catalog after stock in");
 check("weighted avg cost", catg.variants.find((v) => v.id === vAsad.id).avg_cost === 1460, catg.variants.find((v) => v.id === vAsad.id));
-check("salesman cannot stock in", call("stockIn", { lines: [{ variant_id: vAsad.id, qty: 1 }] }, S1).code === "FORBIDDEN");
+check("salesperson cannot stock in", call("stockIn", { lines: [{ variant_id: vAsad.id, qty: 1 }] }, S1).code === "FORBIDDEN");
 
 // ---- sale: scanned twice + loose 6ml + bottle, bill discount, split cash+upi ----
 const saleReq = {
@@ -106,12 +106,12 @@ const saleReq = {
     price_hack: 1,
 };
 saleReq.lines[0].price = 1;
-const sale = ok(call("completeSale", saleReq, S1), "sale by salesman");
+const sale = ok(call("completeSale", saleReq, S1), "sale by salesperson");
 const s = sale.sale;
 check("invoice format", /^GF\/\d\d-\d\d\/00001$/.test(s.invoice_no), s.invoice_no);
 check("gross = 1950*2 + 25*6 + 50", s.gross === 4100, s);
 check("grand = 4000", s.grand_total === 4000, s);
-check("salesman attributed", s.salesman_name === "Sameer");
+check("salesperson attributed", s.salesman_name === "Sameer");
 check("change 100 from cash", s.change === 100, s);
 check("merged into 3 lines", sale.items.length === 3 && sale.items[0].qty === 2);
 check("payments cash net of change", sale.payments.find((p) => p.method === "cash").amount === 900, sale.payments);
@@ -122,10 +122,10 @@ catg = ok(call("getCatalog", {}, T), "catalog after sale");
 check("stock reduced", catg.variants.find((v) => v.id === vAsad.id).stock_qty === 3);
 check("loose ml reduced", catg.variants.find((v) => v.id === vMusk.id).stock_qty === 94);
 
-// ---- salesman rules ----
+// ---- salesperson rules ----
 const sArgs = (o) => Object.assign({ client_ref: "x" + Math.random(), lines: [{ variant_id: vBottle.id, qty: 1 }], payments: [{ method: "cash", amount: 50 }] }, o);
-check("salesman cannot sell as another", !call("completeSale", sArgs({ salesman_id: 3 }), S1).success);
-check("salesman discount cap", /Discount limit/.test(call("completeSale", sArgs({ bill_disc: 20, payments: [{ method: "cash", amount: 30 }] }), S1).message));
+check("salesperson cannot sell as another", !call("completeSale", sArgs({ salesman_id: 3 }), S1).success);
+check("salesperson discount cap", /Discount limit/.test(call("completeSale", sArgs({ bill_disc: 20, payments: [{ method: "cash", amount: 30 }] }), S1).message));
 check("short payment rejected", /short/.test(call("completeSale", sArgs({ payments: [{ method: "cash", amount: 40 }] }), S1).message));
 check("upi over bill rejected", !call("completeSale", sArgs({ payments: [{ method: "upi", amount: 60 }] }), S1).success);
 check("out of stock rejected", /in stock/.test(call("completeSale", sArgs({ lines: [{ variant_id: vAsad.id, qty: 9 }], payments: [{ method: "cash", amount: 99999 }] }), S1).message));
@@ -135,14 +135,14 @@ const mSale = ok(call("completeSale", sArgs({ salesman_id: ayesha.id }), M), "ma
 check("manager sold-by other", mSale.salesman_name === "Ayesha" && mSale.created_by !== ayesha.id);
 
 // ---- visibility ----
-const s1List = ok(call("listSales", {}, S1), "salesman list").sales;
-check("salesman sees only own", s1List.length === 1 && s1List[0].salesman_name === "Sameer", s1List);
-check("salesman cannot open other bill", !call("getSale", { id: mSale.id }, S1).success);
+const s1List = ok(call("listSales", {}, S1), "salesperson list").sales;
+check("salesperson sees only own", s1List.length === 1 && s1List[0].salesman_name === "Sameer", s1List);
+check("salesperson cannot open other bill", !call("getSale", { id: mSale.id }, S1).success);
 check("admin sees all", ok(call("listSales", {}, T), "admin list").sales.length === 2);
 
 // ---- returns + void ----
 const vAsadItem = sale.items.find((i) => i.variant_id === vAsad.id);
-check("salesman cannot return", call("returnItems", { sale_id: s.id }, S1).code === "FORBIDDEN");
+check("salesperson cannot return", call("returnItems", { sale_id: s.id }, S1).code === "FORBIDDEN");
 const ret = ok(call("returnItems", { sale_id: s.id, items: [{ sale_item_id: vAsadItem.id, qty: 1, restock: true }], refund_method: "cash", reason: "Wrong size" }, M), "partial return");
 check("credit note no", /^GF\/CN\/\d\d-\d\d\/0001$/.test(ret.returns[0].credit_note_no), ret.returns[0]);
 check("status part_returned", ret.sale.status === "part_returned");
@@ -158,11 +158,11 @@ check("bottle restored by void", catg.variants.find((v) => v.id === vBottle.id).
 const dash = ok(call("dashboard", {}, T), "dashboard");
 check("dash today net = 4000 - refund", Math.abs(dash.today.net - (4000 - ret.returns[0].total)) < 0.01, dash.today);
 check("leaderboard has Sameer", dash.leaderboard.today.some((r) => r.name === "Sameer"));
-// items sold + new customers per salesman. Sameer's bill: Asad x2 (pcs) + 6ml loose (counts 1) + 1 bottle = 4.
+// items sold + new customers per salesperson. Sameer's bill: Asad x2 (pcs) + 6ml loose (counts 1) + 1 bottle = 4.
 // Rahul was a brand-new customer on it; Ayesha's walk-in bill was voided, so she is in nobody's figures.
 const lbS = dash.leaderboard.today.find((r) => r.name === "Sameer");
 check("leaderboard items as billed", lbS.items === 4, lbS);
-check("new customer credited to the first bill's salesman", lbS.new_customers === 1, lbS);
+check("new customer credited to the first bill's salesperson", lbS.new_customers === 1, lbS);
 check("dashboard today items + new customers", dash.today.items === 4 && dash.today.new_customers === 1, dash.today);
 check("voided bill is in nobody's figures", !dash.leaderboard.today.some((r) => r.name === "Ayesha"), dash.leaderboard.today);
 const lsSum = ok(call("listSales", {}, T), "admin list summary").summary;
@@ -173,11 +173,11 @@ const dcItem = (id) => dc.items.find((i) => i.variant_id === id);
 check("day close lists Asad net of return", dcItem(vAsad.id) && dcItem(vAsad.id).qty === 1 && dcItem(vAsad.id).stock_left === 4, dcItem(vAsad.id));
 check("day close lists loose ml", dcItem(vMusk.id) && dcItem(vMusk.id).qty === 6 && dcItem(vMusk.id).unit === "ml", dcItem(vMusk.id));
 check("voided bill items excluded", dcItem(vBottle.id) && dcItem(vBottle.id).qty === 1, dcItem(vBottle.id));
-check("salesman day close items own only", call("report", { type: "day_close" }, S2).data.items.length === 0);
+check("salesperson day close items own only", call("report", { type: "day_close" }, S2).data.items.length === 0);
 const payNet = Object.values(dc.methods).reduce((a, m) => a + m.net, 0);
 check("day close payments = net", Math.abs(payNet - dc.net) < 0.01, dc);
-check("salesman day close own only", ok(call("report", { type: "day_close" }, S2), "salesman2 day close").bills === 0);
-check("salesman no gst report", call("report", { type: "gst_summary" }, S1).success === false);
+check("salesperson day close own only", ok(call("report", { type: "day_close" }, S2), "salesman2 day close").bills === 0);
+check("salesperson no gst report", call("report", { type: "gst_summary" }, S1).success === false);
 const gst = ok(call("report", { type: "gst_summary" }, T), "gst");
 check("gst totals", Math.abs(gst.totals.total - 4000) < 0.01, gst.totals);
 const pr = ok(call("report", { type: "profit" }, T), "profit");
@@ -185,7 +185,7 @@ check("profit computed", pr.revenue_ex_gst > 0 && pr.cost_of_goods > 0, pr);
 check("day close items is still the list of products sold", Array.isArray(dc.items) && dc.by_salesman[0].items === 4 && dc.by_salesman[0].new_customers === 1, dc.by_salesman);
 
 // ---- new customers: repeats, walk-ins, hand-added, and a voided first bill ----
-const perfRows = () => ok(call("report", { type: "salesman_performance", from: "2020-01-01" }, T), "salesman perf").rows;
+const perfRows = () => ok(call("report", { type: "salesman_performance", from: "2020-01-01" }, T), "salesperson perf").rows;
 const perfFor = (name) => perfRows().find((r) => r.name === name) || { items: 0, new_customers: 0 };
 check("salesman_performance carries both", perfFor("Sameer").items === 4 && perfFor("Sameer").new_customers === 1, perfFor("Sameer"));
 
@@ -199,7 +199,7 @@ const ncBefore = ok(call("dashboard", {}, T), "dash before walk-in").today.new_c
 ok(call("completeSale", sArgs({ client_ref: "nc-walkin", customer: { name: "No phone" } }), M), "walk-in bill");
 ok(call("saveCustomer", { name: "Never Billed", phone: "9800000001" }, T), "customer added by hand");
 check("walk-ins and unbilled customers are not new customers", ok(call("dashboard", {}, T), "dash after walk-in").today.new_customers === ncBefore);
-// …until someone bills them, and then it is that salesman's
+// …until someone bills them, and then it is that salesperson's
 ok(call("completeSale", sArgs({ client_ref: "nc-hand", customer: { phone: "9800000001" }, salesman_id: ayesha.id }), M), "Ayesha bills the hand-added customer");
 check("a hand-added customer counts on their first bill", perfFor("Ayesha").new_customers === 1, perfFor("Ayesha"));
 
@@ -217,13 +217,13 @@ const sumOf = (f) => rows2.reduce((a, r) => a + r[f], 0);
 check("Home tiles = sum of the per-salesman rows", Math.abs(dash2.today.items - sumOf("items")) < 0.001 && dash2.today.new_customers === sumOf("new_customers"), [dash2.today, rows2]);
 const sum2 = ok(call("listSales", {}, T), "list summary again").summary;
 check("Sales page summary = Home tiles", sum2.items === dash2.today.items && sum2.new_customers === dash2.today.new_customers, [sum2, dash2.today]);
-const sumA = ok(call("listSales", { salesman_id: ayesha.id }, T), "list filtered by salesman").summary;
-check("the summary follows the salesman filter", sumA.items === perfFor("Ayesha").items && sumA.new_customers === perfFor("Ayesha").new_customers, [sumA, perfFor("Ayesha")]);
-const s1Dash = ok(call("dashboard", {}, S1), "salesman's own dashboard");
-check("a salesman sees only their own figures", s1Dash.today.items === perfFor("Sameer").items && s1Dash.today.new_customers === 1, s1Dash.today);
+const sumA = ok(call("listSales", { salesman_id: ayesha.id }, T), "list filtered by salesperson").summary;
+check("the summary follows the salesperson filter", sumA.items === perfFor("Ayesha").items && sumA.new_customers === perfFor("Ayesha").new_customers, [sumA, perfFor("Ayesha")]);
+const s1Dash = ok(call("dashboard", {}, S1), "salesperson's own dashboard");
+check("a salesperson sees only their own figures", s1Dash.today.items === perfFor("Sameer").items && s1Dash.today.new_customers === 1, s1Dash.today);
 const dcA = ok(call("report", { type: "day_close" }, S2), "ayesha day close").by_salesman;
-check("a salesman's day close has only their own row", dcA.length === 1 && dcA[0].name === "Ayesha" && dcA[0].new_customers === perfFor("Ayesha").new_customers, dcA);
-ok(call("report", { type: "salesman_performance", from: "2020-01-01" }, T), "salesman perf");
+check("a salesperson's day close has only their own row", dcA.length === 1 && dcA[0].name === "Ayesha" && dcA[0].new_customers === perfFor("Ayesha").new_customers, dcA);
+ok(call("report", { type: "salesman_performance", from: "2020-01-01" }, T), "salesperson perf");
 ok(call("report", { type: "product_sales", group: "brand" }, T), "product sales");
 ok(call("report", { type: "stock_valuation" }, T), "stock valuation");
 ok(call("report", { type: "sales_register" }, T), "register");
@@ -242,19 +242,19 @@ check("default gst shown", mSale.gst_hidden === 0 && s.gst_hidden === 0);
 // ---- A) day-close email from the app ----
 env.mails.length = 0;
 let em = call("emailDayClose", {}, S1);
-check("salesman can email day close", em.success, em);
+check("salesperson can email day close", em.success, em);
 let mail = env.mails.pop();
 check("no list → goes to admins", mail && mail.to === "owner@groovy.test", mail && mail.to);
-check("salesman mail is own figures", /\(Sameer\)/.test(mail.subject) && /Your sales/.test(mail.htmlBody) && !/Cash in drawer/.test(mail.htmlBody), mail.subject);
+check("salesperson mail is own figures", /\(Sameer\)/.test(mail.subject) && /Your sales/.test(mail.htmlBody) && !/Cash in drawer/.test(mail.htmlBody), mail.subject);
 check("reply-to is the sender", mail.replyTo === "sameer@x.in");
 ok(call("emailDayClose", { copy_me: true }, M), "manager emails whole shop with copy");
 mail = env.mails.pop();
 check("manager mail is whole shop", /Whole shop/.test(mail.htmlBody) && /Cash in drawer/.test(mail.htmlBody) && mail.cc === "imran@x.in", mail.cc);
 check("mail lists items sold with stock left", /Items sold/.test(mail.htmlBody) && /Asad EDP/.test(mail.htmlBody) && /Stock left/.test(mail.htmlBody) && /Items sold:/.test(mail.body), mail.body);
-// per salesman: under the name, worded so it can't be mistaken for the per-product 'Items sold' table
-check("mail shows items billed and new customers per salesman", /items billed · \d+ new customer/.test(mail.htmlBody) && /bills, \d+ items, \d+ new customers?,/.test(mail.body), mail.htmlBody.slice(0, 200));
+// per salesperson: under the name, worded so it can't be mistaken for the per-product 'Items sold' table
+check("mail shows items billed and new customers per salesperson", /items billed · \d+ new customer/.test(mail.htmlBody) && /bills, \d+ items, \d+ new customers?,/.test(mail.body), mail.htmlBody.slice(0, 200));
 check("bad report email rejected", !call("saveSettings", { settings: { report_emails: "owner@x.in, not-an-email" } }, T).success);
-check("salesman cannot see report emails", call("getSettings", {}, S1).data.report_emails === undefined);
+check("salesperson cannot see report emails", call("getSettings", {}, S1).data.report_emails === undefined);
 for (let i = 0; i < 4; i++) call("emailDayClose", {}, S1);
 check("manual emails limited per day", /already sent 5/.test(call("emailDayClose", {}, S1).message));
 
@@ -321,7 +321,7 @@ check("the cap is per address — someone else is unaffected", call("forgotPassw
 
 // ---- the Sheet's own password reset: the way back in when email is no help ----
 // its own account, so resetting it cannot disturb the tokens the rest of the suite is using
-ok(call("saveUser", { name: "Reset Me", email: "resetme@x.in", role: "salesman", password: "secret7" }, T), "add the account to reset");
+ok(call("saveUser", { name: "Reset Me", email: "resetme@x.in", role: "salesperson", password: "secret7" }, T), "add the account to reset");
 const S3 = ok(call("login", { email: "resetme@x.in", password: "secret7" }), "that account logs in").token;
 const otherStillValid = ok(call("getCatalog", {}, M), "manager token before the reset");
 const rsp = ctx.resetStaffPassword_("RESETME@x.in"); // matched whatever the case
@@ -534,8 +534,8 @@ ok(call("saveBranch", { id: 1, name: "Kondhwa", code: "" }, T), "rename branch 1
 check("code with bills can't change", !call("saveBranch", { id: 1, name: "Kondhwa", code: "KD" }, T).success);
 
 // staff: Ravi works anywhere (home Kondhwa), Kiran only at KN, Meena manages KN only
-ok(call("saveUser", { name: "Ravi", email: "ravi@x.in", role: "salesman", password: "secret4", branch_id: 1 }, T), "add Ravi");
-ok(call("saveUser", { name: "Kiran", email: "kiran@x.in", role: "salesman", password: "secret5", branch_id: KN, branch_ids: [KN] }, T), "add Kiran");
+ok(call("saveUser", { name: "Ravi", email: "ravi@x.in", role: "salesperson", password: "secret4", branch_id: 1 }, T), "add Ravi");
+ok(call("saveUser", { name: "Kiran", email: "kiran@x.in", role: "salesperson", password: "secret5", branch_id: KN, branch_ids: [KN] }, T), "add Kiran");
 ok(call("saveUser", { name: "Meena", email: "meena@x.in", role: "manager", password: "secret6", branch_id: KN, branch_ids: [KN] }, T), "add Meena");
 const RAVI = ok(call("login", { email: "ravi@x.in", password: "secret4" }), "Ravi login");
 const KIRAN = ok(call("login", { email: "kiran@x.in", password: "secret5" }), "Kiran login");
@@ -553,7 +553,7 @@ check("stock moved into KN", stockAt(KN, vBottle.id) === 3);
 check("all-branches total", stockAt(0, vBottle.id) === kdBottleBefore);
 check("stock_by_branch in catalog", call("getCatalog", {}, T, KN).data.variants.find((v) => v.id === vBottle.id).stock_by_branch[KN] === 3);
 check("over-transfer rejected", /Only/.test(call("transferStock", { to_branch_id: KN, lines: [{ variant_id: vBottle.id, qty: 999 }] }, T, 1).message));
-check("salesman cannot transfer", call("transferStock", { to_branch_id: 1, lines: [{ variant_id: vBottle.id, qty: 1 }] }, KIRAN.token).code === "FORBIDDEN");
+check("salesperson cannot transfer", call("transferStock", { to_branch_id: 1, lines: [{ variant_id: vBottle.id, qty: 1 }] }, KIRAN.token).code === "FORBIDDEN");
 check("KN manager cannot transfer out of Kondhwa", branchesErr(call("transferStock", { to_branch_id: KN, lines: [{ variant_id: vBottle.id, qty: 1 }] }, MEENA, 1)));
 check("transfer listed", ok(call("listTransfers", {}, MEENA), "transfers at KN").some((t) => t.id === tr.id && t.items.length === 1 && t.items[0].qty === 3));
 
@@ -568,7 +568,7 @@ const rKD = ok(call("completeSale", sellArgs({}), RAVI.token, 1), "Ravi switches
 check("Ravi KN bill in KN series", /^GFKN\/\d\d-\d\d\/00002$/.test(rKN.invoice_no), rKN.invoice_no);
 check("Ravi Kondhwa bill in main series", /^GF\/\d\d-\d\d\/\d{5}$/.test(rKD.invoice_no) && rKD.branch_id === 1, rKD.invoice_no);
 const raviList = ok(call("listSales", {}, RAVI.token, 1), "Ravi's sales").sales;
-check("salesman sees own bills from both branches", raviList.length === 2 && raviList.some((x) => x.branch_name === "Kalyani Nagar") && raviList.some((x) => x.branch_name === "Kondhwa"), raviList);
+check("salesperson sees own bills from both branches", raviList.length === 2 && raviList.some((x) => x.branch_name === "Kalyani Nagar") && raviList.some((x) => x.branch_name === "Kondhwa"), raviList);
 const sellersKN = ok(call("listSellers", {}, T, KN), "sellers at KN");
 const sellersKD = ok(call("listSellers", {}, T, 1), "sellers at KD");
 check("sold-by list is per branch", sellersKN.some((u) => u.name === "Kiran") && sellersKN.some((u) => u.name === "Sameer") && sellersKD.every((u) => u.name !== "Kiran" && u.name !== "Meena"));
@@ -604,7 +604,7 @@ const knNewBefore = ok(call("dashboard", {}, T, KN), "KN dashboard before the cr
 ok(call("completeSale", Object.assign({}, crossArgs, { client_ref: "cross-2" }), KIRAN.token, KN), "same customer later at KN");
 check("a customer is new to the shop once, not once per branch", ok(call("dashboard", {}, T, KN), "KN dash after").today.new_customers === knNewBefore, { knNewBefore });
 check("and they count at the branch that billed them first", ok(call("dashboard", {}, T, 0), "all dash").by_branch.find((b) => b.branch_id === 1).new_customers >= 1);
-check("salesman can't use All", branchesErr(call("dashboard", {}, RAVI.token, 999)));
+check("salesperson can't use All", branchesErr(call("dashboard", {}, RAVI.token, 999)));
 
 // expenses & held bills stay with their branch
 ok(call("saveExpense", { title: "KN tea", amount: 40, method: "cash" }, MEENA), "KN expense");
@@ -639,9 +639,9 @@ const dcAll2 = ok(call("report", { type: "day_close" }, T, 0), "day close all (m
 check("KN money only KN", Math.abs(methodsNet(dcKN2) - dcKN2.net) < 0.01, { money: methodsNet(dcKN2), net: dcKN2.net });
 check("KD money only KD", Math.abs(methodsNet(dcKD2) - dcKD2.net) < 0.01, { money: methodsNet(dcKD2), net: dcKD2.net });
 check("branch money adds up to all", Math.abs(methodsNet(dcKN2) + methodsNet(dcKD2) - methodsNet(dcAll2)) < 0.01);
-// cost prices hidden from salesmen in bill details
-const rSale = ok(call("getSale", { id: rKD.id }, RAVI.token, 1), "salesman opens own bill");
-check("salesman bill detail has no cost", rSale.items.every((i) => i.unit_cost === undefined));
+// cost prices hidden from salespeople in bill details
+const rSale = ok(call("getSale", { id: rKD.id }, RAVI.token, 1), "salesperson opens own bill");
+check("salesperson bill detail has no cost", rSale.items.every((i) => i.unit_cost === undefined));
 check("manager bill detail keeps cost", ok(call("getSale", { id: kSale.id }, MEENA), "manager bill").items.every((i) => i.unit_cost !== undefined));
 // expenses: KN-only manager can't touch a Kondhwa expense
 const kdExp = ok(call("saveExpense", { title: "KD rent", amount: 100, method: "cash" }, T, 1), "KD expense").id;
@@ -649,7 +649,7 @@ check("KN manager can't delete KD expense", /another branch/.test(call("deleteEx
 check("KN manager can't edit KD expense", /another branch/.test(call("saveExpense", { id: kdExp, title: "x", amount: 1 }, MEENA).message));
 // staff whose only branch is closed can't fall into "all branches"
 const TMP = ok(call("saveBranch", { name: "Temp", code: "TP" }, T), "temp branch").id;
-ok(call("saveUser", { name: "Tina", email: "tina@x.in", role: "salesman", password: "secret7", branch_id: TMP, branch_ids: [TMP] }, T), "add Tina");
+ok(call("saveUser", { name: "Tina", email: "tina@x.in", role: "salesperson", password: "secret7", branch_id: TMP, branch_ids: [TMP] }, T), "add Tina");
 const TINA = ok(call("login", { email: "tina@x.in", password: "secret7" }), "Tina login").token;
 ok(call("saveBranch", { id: TMP, name: "Temp", code: "TP", active: 0 }, T), "close temp branch");
 check("staff with no active branch refused", branchesErr(call("dashboard", {}, TINA)) && branchesErr(call("listSales", {}, TINA, 0)));
@@ -689,7 +689,7 @@ const mVid = mistakeVid();
 check("manager cannot delete product", call("deleteProduct", { id: mistake }, M, 1).code === "FORBIDDEN");
 const RAVI2 = ok(call("login", { email: "ravi@x.in", password: "secret4" }), "Ravi login for delete test").token;
 const sDel = call("deleteProduct", { id: mistake }, RAVI2, 1);
-check("salesman cannot delete product", sDel.code === "FORBIDDEN", sDel);
+check("salesperson cannot delete product", sDel.code === "FORBIDDEN", sDel);
 const heldDel = ok(call("holdBill", { label: "del test", cart: { lines: [{ variant_id: mVid, qty: 1 }] } }, T, 1), "hold mistaken product");
 check("held bill blocks delete", /held bill/.test(call("deleteProduct", { id: mistake }, T, 1).message || ""));
 ok(call("deleteHeld", { id: heldDel.id }, T, 1), "drop held bill");
@@ -781,7 +781,7 @@ const pdfCount = pdfFiles().length;
 const pdf2 = ok(call("saveInvoicePdf", { id: pdfSale.id }, T, 1), "save PDF again");
 check("second press: already saved, no duplicate file", pdf2.already === true && pdfFiles().length === pdfCount);
 const RAVI3 = ok(call("login", { email: "ravi@x.in", password: "secret4" }), "Ravi login for PDF").token;
-check("salesman can't save someone else's bill PDF", call("saveInvoicePdf", { id: pdfSale.id }, RAVI3, 1).code === "FORBIDDEN");
+check("salesperson can't save someone else's bill PDF", call("saveInvoicePdf", { id: pdfSale.id }, RAVI3, 1).code === "FORBIDDEN");
 // GST hidden → plain INVOICE without HSN/GST columns
 const hidSale = ok(call("completeSale", Object.assign({}, pdfSaleReq, { client_ref: "pdf-2", gst_hidden: true, customer: {} }), T, 1), "gst-hidden sale").sale;
 ok(call("saveInvoicePdf", { id: hidSale.id }, T, 1), "save gst-hidden PDF");
@@ -882,7 +882,7 @@ const g3prod = ok(call("saveProduct", { name: "Gen Sku Item", brand_name: "X", c
 const g3sku = call("getCatalog", {}, T).data.variants.find((v) => v.product_id === g3prod).sku;
 ok(call("deleteProduct", { id: g3prod }, T, 1), "delete item with the highest SKU");
 check("deleted item's SKU number not reused", genSku().data.sku === "SKU-" + String(Number(g3sku.slice(4)) + 1).padStart(4, "0"), g3sku);
-check("salesman can't generate SKU", call("generateSku", {}, RAVI3, 1).code === "FORBIDDEN");
+check("salesperson can't generate SKU", call("generateSku", {}, RAVI3, 1).code === "FORBIDDEN");
 check("sku counter hidden from app settings", !("sku_seq" in call("bootstrap", {}, T, 1).data.settings));
 
 // ---- reset test data (keep setup) on a fresh env ----
@@ -959,22 +959,22 @@ check("bootstrap skips an unchanged catalogue too", bootGate.catalog.unchanged =
 
 // cost price is manager-only, so a role change makes a cached catalogue the wrong shape for that
 // person — the version must move, or the gate above would keep handing them a cost-less copy
-const crewRes = ok(envR.call("saveUser", { name: "Crew", email: "crew@x.in", role: "salesman", password: "secret9" }, RT2), "add a salesman");
+const crewRes = ok(envR.call("saveUser", { name: "Crew", email: "crew@x.in", role: "salesperson", password: "secret9" }, RT2), "add a salesperson");
 const crewId = crewRes.id;
 const crewToken = () => envR.call("login", { email: "crew@x.in", password: "secret9" }).data.token;
 const CREW = crewToken();
 const crewCat = envR.call("getCatalog", {}, CREW, 1).data;
-check("a salesman's catalogue has no cost price", crewCat.variants.every((v) => v.avg_cost === undefined), Object.keys(crewCat.variants[0]));
+check("a salesperson's catalogue has no cost price", crewCat.variants.every((v) => v.avg_cost === undefined), Object.keys(crewCat.variants[0]));
 check("a manager's catalogue has cost price", envR.call("getCatalog", {}, RT2).data.variants.some((v) => "avg_cost" in v));
 const verBefore = envR.call("getCatalog", {}, RT2).data.version;
-ok(envR.call("saveUser", { id: crewId, name: "Crew Renamed", email: "crew@x.in", role: "salesman" }, RT2), "edit name only");
+ok(envR.call("saveUser", { id: crewId, name: "Crew Renamed", email: "crew@x.in", role: "salesperson" }, RT2), "edit name only");
 check("editing a name does not make every phone refetch", envR.call("getCatalog", {}, RT2).data.version === verBefore);
 ok(envR.call("saveUser", { id: crewId, name: "Crew Renamed", email: "crew@x.in", role: "manager" }, RT2), "promote to manager");
 const verAfter = envR.call("getCatalog", {}, RT2).data.version;
 check("a role change moves the version", verAfter > verBefore, { verBefore, verAfter });
 const CREW2 = crewToken();
 const crewAgain = envR.call("getCatalog", { catalog_version: crewCat.version, catalog_branch: crewCat.branch_id }, CREW2, 1).data;
-check("the promoted salesman gets a full catalogue, with cost price",
+check("the promoted salesperson gets a full catalogue, with cost price",
     !crewAgain.unchanged && crewAgain.variants.some((v) => "avg_cost" in v), crewAgain.unchanged);
 
 // ---- log everyone out: ends logins and touches nothing else ----
@@ -1139,10 +1139,58 @@ envR2c.ctx.apiCompleteSale_(
 );
 check("catalogue: stock is current even when the rest is kept", envR2c.call("getCatalog", {}, CCT).data.variants.find((v) => v.barcode === "CC0001").stock_qty === 9,
     envR2c.call("getCatalog", {}, CCT).data.variants.find((v) => v.barcode === "CC0001").stock_qty);
-// a salesman still never sees cost prices, even though the kept copy holds them
-envR2c.call("saveUser", { name: "Cache Salesman", email: "cs@x.in", role: "salesman", password: "secret9" }, CCT);
+// a salesperson still never sees cost prices, even though the kept copy holds them
+envR2c.call("saveUser", { name: "Cache Salesman", email: "cs@x.in", role: "salesperson", password: "secret9" }, CCT);
 const CST = envR2c.call("login", { email: "cs@x.in", password: "secret9" }).data.token;
-check("catalogue: cost stays hidden from a salesman", envR2c.call("getCatalog", {}, CST).data.variants.every((v) => v.avg_cost === undefined));
+check("catalogue: cost stays hidden from a salesperson", envR2c.call("getCatalog", {}, CST).data.variants.every((v) => v.avg_cost === undefined));
+
+// ---- the role was renamed from "salesman" to "salesperson": nobody may be locked out by it ----
+const rnEnv = createEnv();
+rnEnv.ctx.setupSheets();
+const rnPwd = /Password: (\S+)/.exec(rnEnv.alerts.pop())[1];
+const RNT = rnEnv.call("login", { email: "owner@groovy.test", password: rnPwd }).data.token;
+const rnCat = rnEnv.call("bootstrap", {}, RNT).data.catalog.categories[0].id;
+rnEnv.call("saveProduct", {
+    name: "Role Tester", category_id: rnCat, gst_rate: 18,
+    variants: [{ size_label: "5ml", mrp: 100, sell_price: 100, cost: 40, opening_stock: 50, barcode: "ROLE001" }],
+}, RNT);
+const rnVid = rnEnv.call("getCatalog", {}, RNT).data.variants.find((v) => v.barcode === "ROLE001").id;
+
+// a staff row still stored the old way — exactly what every existing shop has until the sweep runs
+rnEnv.call("saveUser", { name: "Old Row", email: "oldrow@x.in", role: "salesperson", password: "secret5" }, RNT);
+const rnOld = rnEnv.ctx.findBy_("Users", "email", "oldrow@x.in");
+rnOld.role = "salesman";
+rnEnv.ctx.updateRows_("Users", [rnOld]);
+const rnOldLogin = rnEnv.call("login", { email: "oldrow@x.in", password: "secret5" });
+check("old role name: can still log in", rnOldLogin.success, rnOldLogin.message);
+const OLDT = rnOldLogin.data.token;
+check("old role name: is reported as salesperson", rnOldLogin.data.user.role === "salesperson", rnOldLogin.data.user.role);
+check("old role name: can still sell", rnEnv.call("completeSale", {
+    client_ref: "rn-1", lines: [{ variant_id: rnVid, qty: 1 }], payments: [{ method: "cash", amount: 100 }],
+}, OLDT).success);
+check("old role name: still kept out of staff", rnEnv.call("listUsers", {}, OLDT).code === "FORBIDDEN");
+check("old role name: still kept out of stock-in", rnEnv.call("stockIn", { lines: [{ variant_id: rnVid, qty: 1 }] }, OLDT).code === "FORBIDDEN");
+check("old role name: still sees only their own bills", rnEnv.call("listSales", {}, OLDT).data.sales.every((s) => s.salesman_name === "Old Row"));
+check("old role name: cost price still hidden", rnEnv.call("getCatalog", {}, OLDT).data.variants.every((v) => v.avg_cost === undefined));
+
+// an app that has not updated yet still sends the old word when saving staff
+const rnLegacySave = rnEnv.call("saveUser", { name: "Legacy App", email: "legacy@x.in", role: "salesman", password: "secret6" }, RNT);
+check("an app sending the old role name still saves", rnLegacySave.success, rnLegacySave.message);
+check("...and it is stored under the new name", rnEnv.ctx.findBy_("Users", "email", "legacy@x.in").role === "salesperson",
+    rnEnv.ctx.findBy_("Users", "email", "legacy@x.in").role);
+
+// the one-time sweep rewrites what is left, once
+check("rows still holding the old name are swept", rnEnv.ctx.migrateRoleNames_() === 1);
+check("every staff row now reads salesperson", rnEnv.ctx.rows_("Users").every((u) => u.role !== "salesman"),
+    rnEnv.ctx.rows_("Users").map((u) => u.role));
+check("a second sweep finds nothing left to do", rnEnv.ctx.migrateRoleNames_() === 0);
+check("the swept account still works", rnEnv.call("listSales", {}, OLDT).success);
+
+// admins and managers are untouched by any of this
+rnEnv.call("saveUser", { name: "Mgr", email: "mgr-rn@x.in", role: "manager", password: "secret7" }, RNT);
+const MGRT = rnEnv.call("login", { email: "mgr-rn@x.in", password: "secret7" }).data.token;
+check("a manager still has manager rights", rnEnv.call("stockIn", { lines: [{ variant_id: rnVid, qty: 1, unit_cost: 40 }] }, MGRT).success);
+check("an unknown role is still rejected", !rnEnv.call("saveUser", { name: "Nope", email: "nope@x.in", role: "wizard", password: "secret8" }, RNT).success);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

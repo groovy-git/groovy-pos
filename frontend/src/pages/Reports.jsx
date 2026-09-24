@@ -10,7 +10,7 @@ import { Button, Chips, DateField, Seg, SkeletonList } from "../components/ui";
 
 const TYPES = [
   { value: "day_close", label: "Day close", all: true },
-  { value: "salesman_performance", label: "Salesmen", all: true },
+  { value: "salesman_performance", label: "Salespeople", all: true },
   { value: "profit", label: "Profit" },
   { value: "gst_summary", label: "GST" },
   { value: "product_sales", label: "Best sellers" },
@@ -81,7 +81,7 @@ export default function Reports() {
   );
 }
 
-// Option A: email this day close to the owner (salesman → own figures, manager/admin → whole shop)
+// Option A: email this day close to the owner (salesperson → own figures, manager/admin → whole shop)
 function EmailDayClose({ date }) {
   const { toast, role } = useApp();
   const [copy, setCopy] = useState(false);
@@ -100,7 +100,7 @@ function EmailDayClose({ date }) {
   return (
     <div className="card mt row between wrap">
       <div className="grow" style={{ minWidth: 150 }}>
-        <div className="bold small">{role === "salesman" ? "Send my day close to the owner" : "Email this day close"}</div>
+        <div className="bold small">{role === "salesperson" ? "Send my day close to the owner" : "Email this day close"}</div>
         <label className="row gap-s small muted" style={{ marginTop: 4 }}>
           <input type="checkbox" checked={copy} onChange={(e) => setCopy(e.target.checked)} style={{ width: 18, height: 18, accentColor: "var(--brown)" }} />
           Send me a copy
@@ -167,7 +167,7 @@ function Report({ type, d }) {
             ))}
           </div>
         )}
-        <SalesmenTable rows={d.by_salesman} title="By salesman" />
+        <SalesmenTable rows={d.by_salesman} title="By salesperson" />
         <ItemsSold items={d.items || []} date={d.date} />
         {d.credit_notes.length > 0 && (
           <div className="card mt">
@@ -281,11 +281,11 @@ function Report({ type, d }) {
       <div className="card table-wrap">
         <div className="card-title">
           <h3>{d.totals.bills} bills · {inr(d.totals.total)}</h3>
-          <Csv name={`sales-register-${d.from}-${d.to}`} rows={d.rows} cols={[{ key: "invoice_no", label: "Invoice" }, { key: "date", label: "Date" }, { key: "customer", label: "Customer" }, { key: "phone", label: "Phone" }, { key: "gstin", label: "GSTIN" }, { key: "salesman", label: "Salesman" }, { key: "taxable", label: "Taxable" }, { key: "cgst", label: "CGST" }, { key: "sgst", label: "SGST" }, { key: "round_off", label: "Round off" }, { key: "total", label: "Total" }, { key: "refunded", label: "Refunded" }, { key: "status", label: "Status" }]} />
+          <Csv name={`sales-register-${d.from}-${d.to}`} rows={d.rows} cols={[{ key: "invoice_no", label: "Invoice" }, { key: "date", label: "Date" }, { key: "customer", label: "Customer" }, { key: "phone", label: "Phone" }, { key: "gstin", label: "GSTIN" }, { key: "salesperson", label: "Salesperson" }, { key: "taxable", label: "Taxable" }, { key: "cgst", label: "CGST" }, { key: "sgst", label: "SGST" }, { key: "round_off", label: "Round off" }, { key: "total", label: "Total" }, { key: "refunded", label: "Refunded" }, { key: "status", label: "Status" }]} />
         </div>
         <table className="tbl">
-          <thead><tr><th>Bill</th><th>Salesman</th><th className="num">Taxable</th><th className="num">GST</th><th className="num">Total</th></tr></thead>
-          <tbody>{d.rows.map((r) => <tr key={r.invoice_no}><td>{r.invoice_no}<div className="tiny muted">{fmtDateTime(r.date)} · {r.customer}</div></td><td>{r.salesman}</td><td className="num">{r.taxable.toFixed(2)}</td><td className="num">{(r.cgst + r.sgst).toFixed(2)}</td><td className="num"><b>{inr(r.total)}</b></td></tr>)}</tbody>
+          <thead><tr><th>Bill</th><th>Salesperson</th><th className="num">Taxable</th><th className="num">GST</th><th className="num">Total</th></tr></thead>
+          <tbody>{d.rows.map((r) => <tr key={r.invoice_no}><td>{r.invoice_no}<div className="tiny muted">{fmtDateTime(r.date)} · {r.customer}</div></td><td>{r.salesperson}</td><td className="num">{r.taxable.toFixed(2)}</td><td className="num">{(r.cgst + r.sgst).toFixed(2)}</td><td className="num"><b>{inr(r.total)}</b></td></tr>)}</tbody>
           <tfoot><tr><td colSpan={2}>Total</td><td className="num">{d.totals.taxable.toFixed(2)}</td><td className="num">{(d.totals.cgst + d.totals.sgst).toFixed(2)}</td><td className="num">{inr(d.totals.total)}</td></tr></tfoot>
         </table>
         {d.totals.returns > 0 && <div className="small mt">Returns (credit notes) in period: −{inr(d.totals.returns)}</div>}
@@ -385,13 +385,13 @@ function SalesmenTable({ rows, title, full, csv }) {
     <div className="card mt table-wrap">
       <div className="card-title">
         <h3 className="row gap-s"><Trophy size={17} color="var(--gold-dark)" /> {title}</h3>
-        {csv && <Csv name="salesman-performance" rows={rows} cols={[{ key: "name", label: "Salesman" }, { key: "bills", label: "Bills" }, { key: "items", label: "Items" }, { key: "new_customers", label: "New customers" }, { key: "gross", label: "Gross" }, { key: "discount", label: "Discount" }, { key: "sales", label: "Sales" }, { key: "returns", label: "Returns" }, { key: "net", label: "Net" }, { key: "avg_bill", label: "Avg bill" }]} />}
+        {csv && <Csv name="salesman-performance" rows={rows} cols={[{ key: "name", label: "Salesperson" }, { key: "bills", label: "Bills" }, { key: "items", label: "Items" }, { key: "new_customers", label: "New customers" }, { key: "gross", label: "Gross" }, { key: "discount", label: "Discount" }, { key: "sales", label: "Sales" }, { key: "returns", label: "Returns" }, { key: "net", label: "Net" }, { key: "avg_bill", label: "Avg bill" }]} />}
       </div>
       {rows.length === 0 ? (
         <div className="muted small">No sales.</div>
       ) : (
         <table className="tbl">
-          <thead><tr><th>Salesman</th><th className="num">Bills</th>{full && <th className="num">Disc.</th>}<th className="num">Returns</th><th className="num">Net</th></tr></thead>
+          <thead><tr><th>Salesperson</th><th className="num">Bills</th>{full && <th className="num">Disc.</th>}<th className="num">Returns</th><th className="num">Net</th></tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.salesman_id}><td><b>{r.name}</b><div className="tiny muted">{plural("item", r.items || 0)} · avg {inr(Math.round(r.avg_bill))}</div><div className="tiny muted">{plural("new customer", r.new_customers || 0)}</div></td><td className="num">{r.bills}</td>{full && <td className="num">{inr(r.discount)}</td>}<td className="num">{inr(r.returns)}</td><td className="num"><b>{inr(r.net)}</b></td></tr>

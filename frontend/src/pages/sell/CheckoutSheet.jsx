@@ -205,7 +205,7 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
 
       <div className="card">
         <Field label="Sold by">
-          {role === "salesman" ? (
+          {role === "salesperson" ? (
             <input className="input" value={user.name} disabled />
           ) : (
             <select className="input" value={sellerId} onChange={(e) => setCart((c) => ({ ...c, salesman_id: Number(e.target.value) }))}>
@@ -241,7 +241,7 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
               )}
             </div>
           </div>
-          {role === "salesman" && <div className="hint">Up to {settings.salesman_max_disc_pct || 10}% in total</div>}
+          {role === "salesperson" && <div className="hint">Up to {settings.salesman_max_disc_pct || 10}% in total</div>}
         </div>
       </div>
 

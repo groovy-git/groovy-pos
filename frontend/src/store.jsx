@@ -23,6 +23,8 @@ const save = (k, v) => {
   }
 };
 
+const OLD_SALESPERSON_ROLE = "sales" + "man";
+
 const EMPTY_CART = { lines: [], bill_disc: 0, customer: { phone: "", name: "", gstin: "" }, salesman_id: null, notes: "", held_id: null, gst_hidden: false };
 // a bill in progress belongs to the branch it was started at
 const cartKey = (branchId) => "gp_cart_" + (branchId || 0);
@@ -309,7 +311,10 @@ export function AppProvider({ children }) {
     });
   }, []);
 
-  const role = user ? user.role : null;
+  // This role used to be called "sales" + "man" (spelled in pieces so a search-and-replace cannot
+  // quietly turn this line into a no-op). A phone that logged in before the rename still has the old
+  // word saved against the user, so the role is read through here rather than compared raw.
+  const role = user ? (user.role === OLD_SALESPERSON_ROLE ? "salesperson" : user.role) : null;
   const multiBranch = branches.length > 1;
   const branch = branches.find((b) => b.id === branchId) || null;
   // branches this person can switch to (admins: all)

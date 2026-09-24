@@ -38,7 +38,7 @@ export default function Sales() {
 
   const [from, to] = f.preset === "custom" ? [f.from, f.to] : PRESETS.find((p) => p.value === f.preset).range();
 
-  // the same range and salesman as last time paint at once, then refresh underneath
+  // the same range and salesperson as last time paint at once, then refresh underneath
   const { data, loading } = useCachedFetch(
     `gp_sales_${from}_${to}_${f.seller || "all"}`,
     () => api("listSales", { from, to, salesman_id: f.seller || undefined }).then((r) => r.data),
@@ -74,8 +74,8 @@ export default function Sales() {
           </div>
         )}
         {isManager && (
-          <select className="input mt" value={f.seller} onChange={(e) => setFilter({ seller: e.target.value })} aria-label="Salesman">
-            <option value="">All salesmen</option>
+          <select className="input mt" value={f.seller} onChange={(e) => setFilter({ seller: e.target.value })} aria-label="Salesperson">
+            <option value="">All salespeople</option>
             {sellers.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -131,7 +131,7 @@ export default function Sales() {
                       <div className="row between sub">
                         <span className="ellipsis">
                           {fmtTime(s.date)} · {s.invoice_no} · {s.salesman_name}
-                          {multiBranch && (isAllBranches || role === "salesman") ? " · " + s.branch_name : ""}
+                          {multiBranch && (isAllBranches || role === "salesperson") ? " · " + s.branch_name : ""}
                         </span>
                         <span className="row gap-s">
                           {s.status !== "completed" && <span className={"badge " + STATUS[s.status].cls}>{STATUS[s.status].label}</span>}

@@ -301,6 +301,7 @@ function setupSheets() {
     appendRows_("Settings", missing);
 
     seedDefaultCategories_();
+    migrateRoleNames_(); // "salesperson" → "salesperson" on staff rows written before the rename
 
     // invoice folders used to be remembered by Drive id; they are found by name now, so these
     // leftovers would only mislead whoever reads Project Settings next
@@ -426,8 +427,8 @@ function seedDemo() {
     resetReqCache_();
     const staff = [
         ["Imran (Manager)", "manager@demo.local", "manager", 1],
-        ["Sameer", "sameer@demo.local", "salesman", 1],
-        ["Ayesha", "ayesha@demo.local", "salesman", kn],
+        ["Sameer", "sameer@demo.local", "salesperson", 1],
+        ["Ayesha", "ayesha@demo.local", "salesperson", kn],
     ];
     staff.forEach((s) => {
         if (!findBy_("Users", "email", s[1])) apiSaveUser_({ name: s[0], email: s[1], role: s[2], password: "demo1234", branch_id: s[3] }, ctx);

@@ -338,6 +338,7 @@ function apiSaveInvoicePdf_(p, ctx) {
 function savePendingInvoicePdfs() {
     resetReqCache_();
     PDF_DIRS_ = {}; // look the folders up again: someone may have moved or renamed them since
+    migrateRoleNames_(); // one-time, and cheap once done: the app works either way meanwhile
     if (setting_("invoice_pdfs") === "no") return;
     const started = Date.now();
     const inTime = () => Date.now() - started < 4 * 60 * 1000; // Apps Script stops at 6 min; the next run continues
