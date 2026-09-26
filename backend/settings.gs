@@ -69,7 +69,7 @@ function apiGetSettings_(p, ctx) {
 
 const EDITABLE_SETTINGS_ = [
     "business_name", "tagline", "address", "phone", "email", "gstin", "state_name", "state_code",
-    "invoice_prefix", "tola_ml", "salesman_max_disc_pct", "return_days", "round_off",
+    "invoice_prefix", "tola_ml", "salesman_max_disc_pct", "salesperson_max_return", "return_days", "round_off",
     "allow_negative_stock", "receipt_footer", "expense_categories",
     "report_emails", "nightly_report", "nightly_report_hour", "nightly_report_skip_empty", "invoice_pdfs",
 ];
@@ -103,7 +103,7 @@ function apiSaveSettings_(p, ctx) {
         vals.gstin = str_(vals.gstin).toUpperCase();
         if (!/^[0-9A-Z]{15}$/.test(vals.gstin)) fail_("GSTIN must be 15 letters/digits");
     }
-    ["tola_ml", "salesman_max_disc_pct", "return_days"].forEach((k) => {
+    ["tola_ml", "salesman_max_disc_pct", "salesperson_max_return", "return_days"].forEach((k) => {
         if (vals[k] !== undefined && (isNaN(parseFloat(vals[k])) || parseFloat(vals[k]) < 0))
             fail_(k.replace(/_/g, " ") + " must be a positive number");
     });

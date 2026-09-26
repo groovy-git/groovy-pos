@@ -37,7 +37,7 @@ export default function SaleDetail({ id }) {
   const s = d.sale;
   const st = STATUS[s.status] || STATUS.completed;
   const text = billText(d, shop);
-  const canReturn = isManager && (s.status === "completed" || s.status === "part_returned");
+  const canReturn = (isManager || returnCapOf(settings) > 0) && (s.status === "completed" || s.status === "part_returned");
   const canVoid = isManager && s.status === "completed" && s.date.slice(0, 10) === istDate();
   const after = (r) => {
     setD(r.data);
@@ -153,6 +153,13 @@ export default function SaleDetail({ id }) {
   );
 }
 
+// most a salesperson may have back on one bill — the server enforces this, the app only keeps
+// staff from filling in a return it would refuse. Absent (an older backend) = the same default.
+const returnCapOf = (settings) => {
+  const v = settings.salesperson_max_return;
+  return v === undefined || v === null || v === "" ? 2000 : Number(v) || 0;
+};
+
 const REASONS = ["Damaged / leaked", "Wrong item", "Wrong size", "Customer changed mind"];
 
 // invoice PDF in Google Drive (Groovy POS/Sales_Invoices) — made on the server, so the app stays light
@@ -192,7 +199,7 @@ function DrivePdf({ sale, onSaved }) {
 }
 
 function ReturnSheet({ open, onClose, detail, onDone }) {
-  const { toast, isAdmin, settings } = useApp();
+  const { toast, isAdmin, isManager, settings } = useApp();
   const [qty, setQty] = useState({});
   const [restock, setRestock] = useState({});
   const [method, setMethod] = useState("cash");
@@ -212,6 +219,10 @@ function ReturnSheet({ open, onClose, detail, onDone }) {
   const refund = r2(detail.items.reduce((s, i) => s + ((qty[i.id] || 0) * i.line_total) / i.qty, 0));
   const days = Math.floor((new Date(istDate()) - new Date(detail.sale.date.slice(0, 10))) / 86400000);
   const late = days > Number(settings.return_days || 3);
+  // a salesperson is capped per bill, earlier returns on it counted
+  const cap = returnCapOf(settings);
+  const left = r2(cap - Number(detail.sale.refunded || 0));
+  const overCap = !isManager && refund > left + 0.001;
 
   const submit = async () => {
     setBusy(true);
@@ -240,11 +251,18 @@ function ReturnSheet({ open, onClose, detail, onDone }) {
       title="Return items"
       full
       footer={
-        <Button className="big block" loading={busy} disabled={refund <= 0 || (late && !isAdmin)} onClick={submit}>
+        <Button className="big block" loading={busy} disabled={refund <= 0 || (late && !isAdmin) || overCap} onClick={submit}>
           Refund {inr(refund)}
         </Button>
       }
     >
+      {!isManager && !late && (
+        <div className="tiny mb center" style={overCap ? { color: "var(--bad)", fontWeight: 700 } : { color: "var(--muted)" }}>
+          {left > 0
+            ? `You can refund up to ${inr(left)} on this bill. Ask a manager for more.`
+            : "Only a manager can accept a return on this bill."}
+        </div>
+      )}
       {late && (
         <div className="card mb" style={{ background: "var(--gold-soft)" }}>
           This bill is {days} days old (return window {settings.return_days || 3} days). {isAdmin ? "As the owner you can still accept it." : "Only the owner can accept this return."}

@@ -116,6 +116,8 @@ const DEFAULT_SETTINGS = {
     tola_ml: "12",
     salesman_max_disc_pct: "10",
     return_days: "3",
+    // most a salesperson may refund on one bill, earlier returns on it counted; 0 = managers only
+    salesperson_max_return: "2000",
     round_off: "yes",
     allow_negative_stock: "no",
     receipt_footer: "Thank you for shopping with Groovy Fragrances! Returns accepted within 3 days for damaged/incorrect items with bill.",

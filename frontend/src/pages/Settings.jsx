@@ -75,6 +75,9 @@ export default function SettingsPage() {
             <Field label="Max discount a salesperson can give (%)" hint="Managers and the owner have no limit">
               <input className="input" inputMode="decimal" value={f.salesman_max_disc_pct || ""} onChange={set("salesman_max_disc_pct")} />
             </Field>
+            <Field label="Max refund a salesperson can accept (₹)" hint="Per bill, earlier returns on it counted. 0 = only managers can accept returns">
+              <input className="input" inputMode="decimal" value={f.salesperson_max_return || ""} onChange={set("salesperson_max_return")} />
+            </Field>
             <Field label="Return window (days)"><input className="input" inputMode="numeric" value={f.return_days || ""} onChange={set("return_days")} /></Field>
             <Field label="1 tola = how many ml?"><input className="input" inputMode="decimal" value={f.tola_ml || ""} onChange={set("tola_ml")} /></Field>
             <div className="field">

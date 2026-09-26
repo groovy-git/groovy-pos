@@ -13,8 +13,8 @@ Staff phones (installed app)  ──►  Google Apps Script (backend)  ──►
 - **Every request needs a login.** Roles and prices are always checked on the server, so a phone cannot change them.
 - **Three roles:**
     - **Owner**: everything.
-    - **Manager**: stock, returns, expenses, reports.
-    - **Salesman**: billing, with a discount limit.
+    - **Manager**: stock, returns of any size, expenses, reports.
+    - **Salesperson**: billing, with a discount limit, and returns up to a rupee limit you set.
     - Everyone can sell, and every bill records who sold it.
 
 ---
@@ -109,7 +109,7 @@ The app prints an **80 mm receipt** or an **A4 tax invoice** using the phone's o
 
 1. Log in as the owner, then open **More → Settings**:
     - **Shop** tab: enter the GSTIN, address and bill footer.
-    - **Billing** tab: check the **salesperson discount limit**, the **return window** and **1 tola = 12 ml**.
+    - **Billing** tab: check the **salesperson discount limit**, the **most a salesperson may refund on one bill** (₹2,000 to begin with; 0 means only managers can accept returns), the **return window** and **1 tola = 12 ml**.
     - **Categories** tab: confirm the HSN codes and GST rates with your accountant.
     - You can add your own categories (e.g. _Bakhoor_) and hide ones you don't sell. A category can be deleted only if no product uses it.
 2. Go to **More → Staff** and add managers and salespeople, each with their own email and password.

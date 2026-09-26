@@ -142,7 +142,7 @@ check("the owner sees all", ok(call("listSales", {}, T), "owner list").sales.len
 
 // ---- returns + void ----
 const vAsadItem = sale.items.find((i) => i.variant_id === vAsad.id);
-check("salesperson cannot return", call("returnItems", { sale_id: s.id }, S1).code === "FORBIDDEN");
+check("a salesperson is refused above the refund cap", /Refund limit/.test(call("returnItems", { sale_id: s.id, items: [{ sale_item_id: vAsadItem.id, qty: 2 }], refund_method: "cash", reason: "Wrong size" }, S1).message));
 const ret = ok(call("returnItems", { sale_id: s.id, items: [{ sale_item_id: vAsadItem.id, qty: 1, restock: true }], refund_method: "cash", reason: "Wrong size" }, M), "partial return");
 check("credit note no", /^GF\/CN\/\d\d-\d\d\/0001$/.test(ret.returns[0].credit_note_no), ret.returns[0]);
 check("status part_returned", ret.sale.status === "part_returned");
@@ -1560,6 +1560,103 @@ check("no old role name is left in the sheet", owEnv.ctx.rows_("Users").every((u
 check("a second sweep finds nothing to do", owEnv.ctx.migrateRoleNames_() === 0);
 check("the swept owner still has every power", owEnv.call("listUsers", {}, OWT).success && owEnv.call("listLogs", {}, OWT).success);
 check("an unknown role is still rejected", !owEnv.call("saveUser", { name: "Nope", email: "nope-ow@x.in", role: "boss", password: "secret4" }, OWT).success);
+
+// ---- a salesperson may take returns, but only up to salesperson_max_return ----
+const capEnv = createEnv();
+capEnv.ctx.setupSheets();
+const capPwd = /Password: (\S+)/.exec(capEnv.alerts.pop())[1];
+const CAPT = capEnv.call("login", { email: "owner@groovy.test", password: capPwd }).data.token;
+const capCat = capEnv.call("bootstrap", {}, CAPT).data.catalog.categories[0].id;
+capEnv.call("saveProduct", {
+    name: "Cap Tester", category_id: capCat, gst_rate: 18,
+    variants: [{ size_label: "50ml", mrp: 1000, sell_price: 1000, cost: 400, opening_stock: 90, barcode: "CAP1" }],
+}, CAPT);
+const capVid = capEnv.call("getCatalog", {}, CAPT).data.variants.find((v) => v.barcode === "CAP1").id;
+capEnv.call("saveUser", { name: "Cap Sp", email: "cap-sp@x.in", role: "salesperson", password: "secret1" }, CAPT);
+capEnv.call("saveUser", { name: "Cap Mgr", email: "cap-mgr@x.in", role: "manager", password: "secret2" }, CAPT);
+const CAPSP = capEnv.call("login", { email: "cap-sp@x.in", password: "secret1" }).data.token;
+const CAPMG = capEnv.call("login", { email: "cap-mgr@x.in", password: "secret2" }).data.token;
+
+// ₹1,000 a piece, so the rupees in these checks are the quantities
+const capBill = (ref, qty, extra, token, branch) =>
+    capEnv.call("completeSale", Object.assign({
+        client_ref: ref, lines: [{ variant_id: capVid, qty }], payments: [{ method: "cash", amount: 99999 }],
+    }, extra || {}), token || CAPSP, branch || 1).data;
+const capReturn = (bill, qty, token, extra) =>
+    capEnv.call("returnItems", Object.assign({
+        sale_id: bill.sale.id, items: [{ sale_item_id: bill.items[0].id, qty }], refund_method: "cash", reason: "Wrong size",
+    }, extra || {}), token, 1);
+
+check("the cap ships at ₹2,000", capEnv.call("getSettings", {}, CAPT).data.salesperson_max_return === "2000",
+    capEnv.call("getSettings", {}, CAPT).data.salesperson_max_return);
+check("a salesperson can see the cap, to warn before trying", capEnv.call("getSettings", {}, CAPSP).data.salesperson_max_return === "2000");
+
+const cb1 = capBill("cap-1", 3);
+check("the test bill is ₹3,000", cb1.sale.grand_total === 3000, cb1.sale.grand_total);
+const cr1 = capReturn(cb1, 1, CAPSP);
+check("a salesperson can now return ₹1,000 of a ₹3,000 bill", cr1.success, cr1.message);
+check("...it is a proper credit note", /^GF\/CN\/\d\d-\d\d\/0001$/.test(cr1.data.returns[0].credit_note_no), cr1.data.returns[0]);
+check("...the bill is part returned", cr1.data.sale.status === "part_returned", cr1.data.sale.status);
+check("...and cost prices are still hidden from them", cr1.data.items.every((i) => i.unit_cost === undefined), cr1.data.items[0]);
+const cr2 = capReturn(cb1, 1, CAPSP);
+check("a second ₹1,000 lands exactly on the cap and is allowed", cr2.success, cr2.message);
+const cr3 = capReturn(cb1, 1, CAPSP);
+check("a third is refused: the cap counts the whole bill", /Refund limit/.test(cr3.message), cr3.message);
+check("...and says what was already refunded", /already refunded/.test(cr3.message), cr3.message);
+check("a manager can finish that same bill off", capReturn(cb1, 1, CAPMG).success);
+
+// refused before anything is written — the reason the round-off settlement moved above addStock_
+const cb2 = capBill("cap-2", 3);
+const capStock = () => capEnv.call("getCatalog", {}, CAPT).data.variants.find((v) => v.id === capVid).stock_qty;
+const stockBefore = capStock();
+const tooBig = capReturn(cb2, 3, CAPSP);
+check("₹3,000 in one go is refused", /Refund limit/.test(tooBig.message), tooBig.message);
+const afterFail = capEnv.call("getSale", { id: cb2.sale.id }, CAPT).data;
+check("the refused return moved no stock", capStock() === stockBefore, [stockBefore, capStock()]);
+check("the refused return left the bill alone", afterFail.sale.status === "completed" && Number(afterFail.sale.refunded) === 0, afterFail.sale);
+check("the refused return wrote no credit note", afterFail.returns.length === 0, afterFail.returns);
+const mRet = capReturn(cb2, 3, CAPMG);
+check("a manager returns the whole ₹3,000 bill", mRet.success, mRet.message);
+check("...and the credit note series never skipped a number", /0004$/.test(mRet.data.returns[0].credit_note_no), mRet.data.returns[0].credit_note_no);
+
+const cb3 = capBill("cap-3", 3);
+check("the owner is not capped", capReturn(cb3, 3, CAPT).success);
+
+// 0 = back to exactly how it was before this change
+ok(capEnv.call("saveSettings", { settings: { salesperson_max_return: "0" } }, CAPT), "cap switched off");
+const cb4 = capBill("cap-4", 1);
+const offTry = capReturn(cb4, 1, CAPSP);
+check("cap 0 keeps a salesperson out of returns altogether", /Only a manager/.test(offTry.message), offTry.message);
+check("...while a manager still returns as before", capReturn(cb4, 1, CAPMG).success);
+
+// a shop whose Settings row was never written still gets the default
+capEnv.ctx.setSetting_("salesperson_max_return", "", 0);
+const cb5 = capBill("cap-5", 3);
+check("with the setting empty the ₹2,000 default applies", capReturn(cb5, 1, CAPSP).success);
+check("...and is enforced", /Refund limit/.test(capReturn(cb5, 2, CAPSP).message));
+check("clearing the cap from the app is rejected", !capEnv.call("saveSettings", { settings: { salesperson_max_return: "" } }, CAPT).success);
+check("a negative cap is rejected", !capEnv.call("saveSettings", { settings: { salesperson_max_return: "-5" } }, CAPT).success);
+ok(capEnv.call("saveSettings", { settings: { salesperson_max_return: "2000" } }, CAPT), "cap set back to ₹2,000");
+
+// past the window the cap is not the obstacle, and only the owner may override
+const cbOld = capBill("cap-old", 1, { _at: "2026-01-05 11:00:00" });
+const lateSp = capReturn(cbOld, 1, CAPSP);
+check("a late bill tells a salesperson about the window, not the cap", /Return window/.test(lateSp.message) && !/Refund limit/.test(lateSp.message), lateSp.message);
+check("a manager still cannot override a late bill", !capReturn(cbOld, 1, CAPMG, { override: true }).success);
+check("the owner still can", capReturn(cbOld, 1, CAPT, { override: true }).success);
+
+// another branch's bill is still refused, salesperson or not
+const capKN = ok(capEnv.call("saveBranch", { name: "Kalyani Nagar", code: "KN" }, CAPT), "second branch").id;
+ok(capEnv.call("transferStock", { to_branch_id: capKN, lines: [{ variant_id: capVid, qty: 10 }] }, CAPT, 1), "stock to KN");
+const cbKN = capBill("cap-kn", 1, {}, CAPT, capKN);
+const knTry = capReturn(cbKN, 1, CAPSP);
+check("a salesperson cannot return another branch's bill", /made at Kalyani Nagar/.test(knTry.message), knTry.message);
+
+// the day's figures still add up with a salesperson doing the returning
+const capClose = ok(capEnv.call("report", { type: "day_close" }, CAPT, 1), "day close after salesperson returns");
+check("day close counts the salesperson's refunds", capClose.returns > 0, capClose.returns);
+check("day close nets them off the sales", Math.abs(capClose.net - (capClose.sales - capClose.returns)) < 0.02, [capClose.sales, capClose.returns, capClose.net]);
+
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

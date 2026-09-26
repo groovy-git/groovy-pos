@@ -329,6 +329,23 @@ function apiReturnItems_(p, ctx) {
             });
             if (restock && vmap[si.variant_id]) restocks.push({ variant_id: si.variant_id, qty, unit_cost: si.unit_cost });
         });
+        const fullyReturned = allItems.every((i) => i.returned_qty >= i.qty - 0.0001);
+        // last return settles the rupee round-off exactly
+        total = fullyReturned ? r2_(s.grand_total - s.refunded) : r2_(total);
+        taxable = r2_(taxable);
+
+        // What a salesperson may hand back. Checked here, before the first write, so a refused
+        // return leaves nothing behind; and counted across the whole bill, because a bill can be
+        // returned a few items at a time and four small refunds must not add up past the limit.
+        if (ctx.user.role === "salesperson") {
+            const cap = num_(setting_("salesperson_max_return"), 2000);
+            if (!cap) fail_("Only a manager can accept a return. Ask a manager.");
+            if (r2_(s.refunded + total) > cap + 0.001) {
+                const had = s.refunded > 0 ? " (₹" + r2_(s.refunded) + " already refunded on it)" : "";
+                fail_("Refund limit for a salesperson is ₹" + cap + " per bill" + had + ". Ask a manager.");
+            }
+        }
+
         const bal = addStock_(restocks.map((r) => ({ variant_id: r.variant_id, branch_id: branch, delta: r.qty })));
         restocks.forEach((r) =>
             moves.push({
@@ -337,10 +354,6 @@ function apiReturnItems_(p, ctx) {
             }),
         );
 
-        const fullyReturned = allItems.every((i) => i.returned_qty >= i.qty - 0.0001);
-        // last return settles the rupee round-off exactly
-        total = fullyReturned ? r2_(s.grand_total - s.refunded) : r2_(total);
-        taxable = r2_(taxable);
         const fy = fyOf_(now);
         const code = branchCode_(branch);
         const cn = creditNoteNo_(setting_("invoice_prefix"), fy, nextCounter_(code ? "cn_seq_" + code + "_" + fy : "cn_seq_" + fy), code);
