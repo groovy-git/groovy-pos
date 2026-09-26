@@ -81,7 +81,7 @@ export default function Reports() {
   );
 }
 
-// Option A: email this day close to the owner (salesperson → own figures, manager/admin → whole shop)
+// Option A: email this day close to the owner (salesperson → own figures, manager/owner → whole shop)
 function EmailDayClose({ date }) {
   const { toast, role } = useApp();
   const [copy, setCopy] = useState(false);

@@ -27,7 +27,7 @@ export default function UsersPage() {
     if (list) setSellers(list.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name, role: u.role })));
   }, [list, setSellers]);
 
-  // active first, then admins, managers, salespeople, then by name. An unknown role sorts last rather
+  // active first, then owners, managers, salespeople, then by name. An unknown role sorts last rather
   // than breaking the page. The copy is because sort() would otherwise mutate state in place.
   const ordered = useMemo(
     () =>

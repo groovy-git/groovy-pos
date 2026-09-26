@@ -319,7 +319,7 @@ export function AppProvider({ children }) {
   const role = user ? OLD_ROLE_NAMES[user.role] || user.role : null;
   const multiBranch = branches.length > 1;
   const branch = branches.find((b) => b.id === branchId) || null;
-  // branches this person can switch to (admins: all)
+  // branches this person can switch to (the owner: all)
   const myBranches = !user ? [] : role === "owner" ? branches : branches.filter((b) => (user.branch_ids || []).includes(b.id));
 
   const value = {

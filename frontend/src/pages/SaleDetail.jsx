@@ -247,7 +247,7 @@ function ReturnSheet({ open, onClose, detail, onDone }) {
     >
       {late && (
         <div className="card mb" style={{ background: "var(--gold-soft)" }}>
-          This bill is {days} days old (return window {settings.return_days || 3} days). {isAdmin ? "As admin you can still accept it." : "Only admin can accept this return."}
+          This bill is {days} days old (return window {settings.return_days || 3} days). {isAdmin ? "As the owner you can still accept it." : "Only the owner can accept this return."}
         </div>
       )}
       <div className="list">
