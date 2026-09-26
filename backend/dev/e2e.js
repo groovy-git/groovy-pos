@@ -17,6 +17,14 @@ function ok(res, name) {
     check(name + " → " + (res.message || ""), res.success, res);
     return res.data;
 }
+// same values, keys in any order
+function sameData(a, b) {
+    const canon = (v) =>
+        Array.isArray(v) ? v.map(canon)
+            : v && typeof v === "object" ? Object.keys(v).sort().reduce((o, k) => ((o[k] = canon(v[k])), o), {})
+                : v;
+    return JSON.stringify(canon(a)) === JSON.stringify(canon(b));
+}
 
 const env = createEnv();
 const { ctx, call } = env;
@@ -116,6 +124,9 @@ check("change 100 from cash", s.change === 100, s);
 check("merged into 3 lines", sale.items.length === 3 && sale.items[0].qty === 2);
 check("payments cash net of change", sale.payments.find((p) => p.method === "cash").amount === 900, sale.payments);
 check("tax adds up", Math.abs(s.cgst + s.sgst + s.taxable - s.grand_total + s.round_off) < 0.02, s);
+// the reply is built from the rows just written, not read back — it must match a fresh read exactly
+const saleRead = ok(call("getSale", { id: s.id }, S1), "bill read back");
+check("sale reply equals the bill read back (salesperson)", sameData(sale, saleRead), { reply: sale, read: saleRead });
 const again = ok(call("completeSale", saleReq, S1), "retry same client_ref");
 check("idempotent retry", again.sale.id === s.id);
 catg = ok(call("getCatalog", {}, T), "catalog after sale");
@@ -1824,6 +1835,21 @@ check("GST counts the exchange's credit notes", xGst.credit_notes_by_rate.length
 check("GST counts the exchange's bills", xGst.totals.total > 0, xGst.totals);
 const xBoard = ok(xEnv.call("report", { type: "salesman_performance" }, XT, 1), "leaderboard with exchanges");
 check("the leaderboard nets an exchange off the seller", xBoard.rows.some((r) => r.returns > 0), xBoard.rows && xBoard.rows.map((r) => [r.name, r.sales, r.returns]));
+
+// replies built from the rows just written must match the bill read back, for every role and kind of bill
+const xRead = (id, token, branch) => xEnv.call("getSale", { id }, token, branch).data;
+const xExReply = Object.assign({}, x1.data);
+delete xExReply.exchange; // the exchange summary is extra to the bill itself
+check("exchange reply equals the bill read back", sameData(xExReply, xRead(x1.data.sale.id, XSP, 1)), { reply: xExReply, read: xRead(x1.data.sale.id, XSP, 1) });
+check("owner walk-in reply equals the bill read back", sameData(xbKN, xRead(xbKN.sale.id, XT, xKN)), { reply: xbKN, read: xRead(xbKN.sale.id, XT, xKN) });
+const xbMgr = xBill(XA, 1, XMG);
+check("manager reply (with costs) equals the bill read back", sameData(xbMgr, xRead(xbMgr.sale.id, XMG, 1)), { reply: xbMgr, read: xRead(xbMgr.sale.id, XMG, 1) });
+check("manager reply keeps unit cost", xbMgr.items[0].unit_cost > 0, xbMgr.items[0]);
+const xbSp = xBill(XA, 1);
+check("salesperson reply hides unit cost", !("unit_cost" in xbSp.items[0]), xbSp.items[0]);
+const xbSplit = xEnv.call("completeSale", { client_ref: "x-split", lines: [{ variant_id: XA, qty: 1 }], bill_disc: 10, notes: "gift wrap",
+    payments: [{ method: "upi", amount: 500, reference: "U1" }, { method: "cash", amount: 2000 }] }, XT, 1).data;
+check("split-payment reply equals the bill read back", sameData(xbSplit, xRead(xbSplit.sale.id, XT, 1)), { reply: xbSplit, read: xRead(xbSplit.sale.id, XT, 1) });
 
 
 console.log(`\n${passed} passed, ${failed} failed`);

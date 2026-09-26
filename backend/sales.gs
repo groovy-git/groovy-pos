@@ -6,14 +6,16 @@ function canSeeSale_(ctx, s) {
     return allowedBranchIds_(ctx.user).indexOf(bid_(s.branch_id)) >= 0; // manager: branches they work at
 }
 
-function saleDetail_(s, ctx) {
+// `pre` = the bill's rows when the caller already has them in hand (a bill it has just written),
+// so they aren't read back off the sheet
+function saleDetail_(s, ctx, pre) {
     const hideCost = !ctx || ctx.user.role === "salesperson"; // cost prices are for managers only
     // one bill's lines, not every line ever sold: both tables are written in bill order, so the
     // rows for this bill sit together and can be read as a small block
-    const items = windowRows_("Sale_Items", "sale_id", s.id, s.id);
-    const pays = windowRows_("Payments", "sale_id", s.id, s.id);
-    const rets = windowRows_("Returns", "sale_id", s.id, s.id);
-    const retItems = rets.length ? windowRows_("Return_Items", "return_id", rets[0].id, rets[rets.length - 1].id) : [];
+    const items = pre ? pre.items : windowRows_("Sale_Items", "sale_id", s.id, s.id);
+    const pays = pre ? pre.payments : windowRows_("Payments", "sale_id", s.id, s.id);
+    const rets = pre ? pre.returns : windowRows_("Returns", "sale_id", s.id, s.id);
+    const retItems = pre ? pre.retItems : rets.length ? windowRows_("Return_Items", "return_id", rets[0].id, rets[rets.length - 1].id) : [];
     const strip = (o) => {
         const c = Object.assign({}, o);
         delete c._r;
@@ -185,7 +187,14 @@ function completeSaleLocked_(p, ctx, clientRef, lines, branch, opts) {
         if (h) deleteRow_("Held_Bills", h);
     }
     log_(ctx, "SALE", "Sales", saleId, invNo + " ₹" + sale.grand_total + " by " + seller.name);
-    return { message: "Sale completed", data: saleDetail_(findBy_("Sales", "id", saleId), ctx) };
+    // answered from the rows just written rather than reading them back — a new bill has no returns
+    const pre = {
+        items: saleItems.map((o) => asStored_("Sale_Items", o)),
+        payments: payRows.map((o) => asStored_("Payments", o)),
+        returns: [],
+        retItems: [],
+    };
+    return { message: "Sale completed", data: saleDetail_(asStored_("Sales", sale), ctx, pre) };
 }
 
 /* ---------- list / detail ---------- */

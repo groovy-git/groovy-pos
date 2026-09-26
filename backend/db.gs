@@ -303,6 +303,19 @@ function appendRows_(name, objs) {
     });
 }
 
+/**
+ * A record as a read of it would come back right after appendRows_ wrote it: every schema column
+ * present, blanks as 0 or "" — the same filling appendRows_ gives the copies it keeps in the cache.
+ */
+function asStored_(name, obj) {
+    const schema = SCHEMA[name];
+    const copy = Object.assign({}, obj);
+    Object.keys(schema).forEach((k) => {
+        if (copy[k] === undefined) copy[k] = schema[k] === "n" ? 0 : "";
+    });
+    return copy;
+}
+
 /** Write back full records that carry `_r`. */
 function updateRows_(name, objs) {
     const t = readTable_(name);
