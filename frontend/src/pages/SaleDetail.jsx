@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { MessageCircle, Printer, FileText, Undo2, Ban, Share2, CloudUpload, CheckCircle2 } from "lucide-react";
+import { MessageCircle, Printer, FileText, Undo2, Ban, Repeat2, Share2, CloudUpload, CheckCircle2 } from "lucide-react";
 import { useApp } from "../store";
 import { api } from "../lib/api";
 import { runBusy } from "../lib/busy";
+import { navigate } from "../lib/router";
 import { inr, fmtDateTime, qtyLabel, istDate, METHOD_LABEL, r2 } from "../lib/format";
 import { a4InvoiceHtml, billText, printHtml, receiptHtml, whatsappLink } from "../lib/print";
 import TopBar from "../components/TopBar";
@@ -10,10 +11,10 @@ import { Button, Chips, Field, Seg, Sheet, SkeletonList, Stepper } from "../comp
 import { STATUS } from "./Sales";
 
 export default function SaleDetail({ id }) {
-  const { settings, isManager, toast, refreshCatalog, multiBranch } = useApp();
+  const { settings, isManager, toast, refreshCatalog, multiBranch, cart, setCart } = useApp();
   const shop = { ...settings, multi_branch: multiBranch };
   const [d, setD] = useState(null);
-  const [ret, setRet] = useState(false);
+  const [ret, setRet] = useState(null); // "return" | "exchange"
   const [voidOpen, setVoidOpen] = useState(false);
 
   const load = () =>
@@ -38,6 +39,7 @@ export default function SaleDetail({ id }) {
   const st = STATUS[s.status] || STATUS.completed;
   const text = billText(d, shop);
   const canReturn = (isManager || returnCapOf(settings) > 0) && (s.status === "completed" || s.status === "part_returned");
+  const canExchange = s.status === "completed" || s.status === "part_returned";
   const canVoid = isManager && s.status === "completed" && s.date.slice(0, 10) === istDate();
   const after = (r) => {
     setD(r.data);
@@ -134,8 +136,13 @@ export default function SaleDetail({ id }) {
               <Share2 size={18} /> Share
             </button>
           )}
+          {canExchange && (
+            <button className="btn secondary" onClick={() => setRet("exchange")}>
+              <Repeat2 size={18} /> Exchange
+            </button>
+          )}
           {canReturn && (
-            <button className="btn secondary" onClick={() => setRet(true)}>
+            <button className="btn secondary" onClick={() => setRet("return")}>
               <Undo2 size={18} /> Return items
             </button>
           )}
@@ -147,7 +154,25 @@ export default function SaleDetail({ id }) {
         </div>
         <DrivePdf sale={s} onSaved={(pdf_url) => setD((x) => ({ ...x, sale: { ...x.sale, pdf_url } }))} />
       </div>
-      <ReturnSheet open={ret} onClose={() => setRet(false)} detail={d} onDone={after} />
+      <ReturnSheet
+        mode={ret}
+        onClose={() => setRet(null)}
+        detail={d}
+        onDone={after}
+        onExchange={(picked, credit) => {
+          // carry the swap into the Sell screen: the replacement is chosen there, with the scanner
+          // and the search staff already use, and nothing is saved until checkout
+          setCart((c) => ({
+            ...c,
+            client_ref: null,
+            customer: c.lines.length ? c.customer : { phone: s.customer_phone || "", name: s.customer_name || "", gstin: "" },
+            exchange: { sale_id: s.id, invoice_no: s.invoice_no, reason: picked.reason, items: picked.items, back: picked.back, credit },
+          }));
+          setRet(null);
+          toast(cart.lines.length ? "Exchange started — your bill in progress is the replacement" : "Now choose the replacement", "success", 3500);
+          navigate("sell");
+        }}
+      />
       <VoidSheet open={voidOpen} onClose={() => setVoidOpen(false)} sale={s} onDone={after} />
     </>
   );
@@ -198,7 +223,9 @@ function DrivePdf({ sale, onSaved }) {
   );
 }
 
-function ReturnSheet({ open, onClose, detail, onDone }) {
+function ReturnSheet({ mode, onClose, detail, onDone, onExchange }) {
+  const open = !!mode;
+  const swap = mode === "exchange";
   const { toast, isAdmin, isManager, settings } = useApp();
   const [qty, setQty] = useState({});
   const [restock, setRestock] = useState({});
@@ -222,7 +249,19 @@ function ReturnSheet({ open, onClose, detail, onDone }) {
   // a salesperson is capped per bill, earlier returns on it counted
   const cap = returnCapOf(settings);
   const left = r2(cap - Number(detail.sale.refunded || 0));
-  const overCap = !isManager && refund > left + 0.001;
+  const overCap = !swap && !isManager && refund > left + 0.001;
+
+  const chooseReplacement = () => {
+    const picked = detail.items.filter((i) => qty[i.id] > 0);
+    onExchange(
+      {
+        reason,
+        items: picked.map((i) => ({ sale_item_id: i.id, qty: qty[i.id], restock: restock[i.id] !== false })),
+        back: picked.filter((i) => restock[i.id] !== false).map((i) => ({ variant_id: i.variant_id, qty: qty[i.id] })),
+      },
+      refund,
+    );
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -248,15 +287,20 @@ function ReturnSheet({ open, onClose, detail, onDone }) {
     <Sheet
       open={open}
       onClose={onClose}
-      title="Return items"
+      title={swap ? "Exchange — what is coming back?" : "Return items"}
       full
       footer={
-        <Button className="big block" loading={busy} disabled={refund <= 0 || (late && !isAdmin) || overCap} onClick={submit}>
-          Refund {inr(refund)}
+        <Button
+          className="big block"
+          loading={busy}
+          disabled={refund <= 0 || (late && !isAdmin) || overCap}
+          onClick={swap ? chooseReplacement : submit}
+        >
+          {swap ? `Choose replacement · ${inr(refund)} credit` : `Refund ${inr(refund)}`}
         </Button>
       }
     >
-      {!isManager && !late && (
+      {!swap && !isManager && !late && (
         <div className="tiny mb center" style={overCap ? { color: "var(--bad)", fontWeight: 700 } : { color: "var(--muted)" }}>
           {left > 0
             ? `You can refund up to ${inr(left)} on this bill. Ask a manager for more.`
@@ -289,8 +333,10 @@ function ReturnSheet({ open, onClose, detail, onDone }) {
           ),
         )}
       </div>
-      <div className="section-label">Refund by</div>
-      <Seg value={method} onChange={setMethod} options={["cash", "upi", "card"].map((m) => ({ value: m, label: METHOD_LABEL[m] }))} />
+      {!swap && <div className="section-label">Refund by</div>}
+      {!swap && (
+        <Seg value={method} onChange={setMethod} options={["cash", "upi", "card"].map((m) => ({ value: m, label: METHOD_LABEL[m] }))} />
+      )}
       <div className="section-label">Reason</div>
       <Chips value={reason} onChange={setReason} options={REASONS.map((r) => ({ value: r, label: r }))} />
     </Sheet>

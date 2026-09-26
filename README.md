@@ -95,6 +95,32 @@ Staff phones (installed app)  ──►  Google Apps Script (backend)  ──►
 - When you first tap the 📷 button, allow **camera access**.
 - **Bluetooth barcode scanner:** pair it with the phone in keyboard (HID) mode. It works on the Sell and Stock In screens without tapping anything first.
 
+## Returns and exchanges
+
+Open the bill from **Sales**, then:
+
+- **Return items** — pick what is coming back, how much of it, and whether each piece goes back on the
+  shelf (untick that for a leaked bottle). Choose how the money goes back and give a reason. The app
+  writes a **credit note**, puts the stock back and records the refund, all against the original bill.
+- **Exchange** — for the commonest case: the customer brings something back and wants something else.
+  Pick what is coming back, tap **Choose replacement**, and the app takes you to the usual Sell screen
+  with the credit in hand. Scan or search the replacement as always. At **Checkout** the credit is
+  taken off the new bill and you only collect the difference — or hand back the difference if the
+  replacement costs less. Both documents are written together, so nothing can half-happen.
+
+A few rules worth knowing:
+
+- Both work only at the **branch that made the bill**, and only inside the **return window**
+  (3 days by default). Past that, only the owner can accept it.
+- A **salesperson** can accept a return up to the limit in Settings → Billing, counted across the whole
+  bill. For an exchange that limit applies only to **cash they hand back** — an even swap, or one where
+  the customer pays more, has no limit, because no money leaves the drawer.
+- An exchange shows on the day close as its own line, **Exchange**, with matching in and out. Your cash
+  figure is untouched by it, so the drawer still adds up.
+- A bill part paid by an exchange **cannot be voided**. Use Return items on it instead.
+- GST-wise this is the normal treatment: a credit note for what came back and a fresh invoice for what
+  went out, in separate number series. Both appear in the GST report.
+
 ## Printing bills
 
 The app prints an **80 mm receipt** or an **A4 tax invoice** using the phone's or laptop's normal print dialog.

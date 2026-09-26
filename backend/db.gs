@@ -5,6 +5,13 @@
 
 let REQ_CACHE_ = {};
 
+/** Forget the rows read so far but keep the open spreadsheet — for a second pass inside one lock. */
+function rereadRows_() {
+    const ss = REQ_CACHE_.__ss;
+    REQ_CACHE_ = {};
+    if (ss) REQ_CACHE_.__ss = ss;
+}
+
 function resetReqCache_() {
     REQ_CACHE_ = {};
 }

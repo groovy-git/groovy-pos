@@ -158,3 +158,7 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const PAYMENT_METHODS = ["cash", "upi", "card"];
+// How an exchange settles: the credit note pays for the replacement bill. Deliberately NOT in
+// PAYMENT_METHODS, which is the list a person may choose from — that is what stops a bill being
+// "paid" with this out of thin air. Reports pick it up on their own, keyed by whatever they meet.
+const EXCHANGE_METHOD_ = "exchange";

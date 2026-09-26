@@ -96,7 +96,7 @@ export const plural = (word, n) => `${n} ${word}${Number(n) === 1 ? "" : "s"}`;
 
 export const titleCase = (s) => String(s || "").replace(/\b\w/g, (c) => c.toUpperCase());
 
-export const METHOD_LABEL = { cash: "Cash", upi: "UPI", card: "Card" };
+export const METHOD_LABEL = { cash: "Cash", upi: "UPI", card: "Card", exchange: "Exchange" };
 // both keys: a phone that logged in before the rename still has "salesman" saved against the user
 // old keys kept as well: a phone that logged in before a rename still has the old word cached
 export const ROLE_LABEL = { owner: "Owner", admin: "Owner", manager: "Manager", salesperson: "Salesperson", salesman: "Salesperson" };

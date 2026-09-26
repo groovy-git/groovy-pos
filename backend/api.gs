@@ -64,6 +64,7 @@ function actions_() {
     listTransfers: { fn: apiListTransfers_, roles: AM_ },
     voidSale: { fn: apiVoidSale_, roles: AM_ },
     returnItems: { fn: apiReturnItems_, roles: ALL_ }, // a salesperson is held to salesperson_max_return, not kept out by the role
+    exchange: { fn: apiExchange_, roles: ALL_ }, // the cap here is on cash handed back, not on the swap
     listExpenses: { fn: apiListExpenses_, roles: AM_ },
     saveExpense: { fn: apiSaveExpense_, roles: AM_ },
     deleteExpense: { fn: apiDeleteExpense_, roles: AM_ },

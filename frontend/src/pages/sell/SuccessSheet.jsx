@@ -10,6 +10,7 @@ export default function SuccessSheet({ detail, onClose }) {
   const shop = { ...settings, multi_branch: multiBranch };
   const s = detail.sale;
   const text = billText(detail, shop);
+  const swap = detail.exchange || null; // set when this bill came out of an exchange
   const share = async () => {
     try {
       await navigator.share({ title: s.invoice_no, text });
@@ -21,7 +22,7 @@ export default function SuccessSheet({ detail, onClose }) {
     <Sheet
       open
       onClose={onClose}
-      title="Sale complete"
+      title={swap ? "Exchange complete" : "Sale complete"}
       full
       footer={
         <button className="btn big block" onClick={onClose}>
@@ -29,6 +30,14 @@ export default function SuccessSheet({ detail, onClose }) {
         </button>
       }
     >
+      {swap && (
+        <div className="card mb" style={{ background: "var(--gold-soft)" }}>
+          <div>
+            Credit note <b>{swap.credit_note_no}</b> for {inr(swap.credit)} against bill {swap.from_invoice_no}
+          </div>
+          {swap.refunded > 0 && <div className="mt">{inr(swap.refunded)} was given back to the customer.</div>}
+        </div>
+      )}
       <SaleSummary detail={detail} />
       <div className="grid-2 mt">
         <a className="btn wa" href={whatsappLink(s.customer_phone, text)} target="_blank" rel="noreferrer">

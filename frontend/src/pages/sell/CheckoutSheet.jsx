@@ -14,8 +14,13 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
   const [discMode, setDiscMode] = useState("rs");
   const [discText, setDiscText] = useState("");
   const total = preview.grand_total;
+  const swap = cart.exchange || null;
+  const credit = swap ? r2(swap.credit) : 0;
+  const due = r2(Math.max(0, total - credit)); // what the customer still pays
+  const back = r2(Math.max(0, credit - total)); // what goes back to them, if the replacement is cheaper
+  const [backMethod, setBackMethod] = useState("cash");
   // payment rows; `auto` rows follow the bill total until the user types an amount
-  const [pays, setPays] = useState(() => [{ method: "cash", amount: String(total), reference: "", auto: true }]);
+  const [pays, setPays] = useState(() => [{ method: "cash", amount: String(due), reference: "", auto: true }]);
   const [known, setKnown] = useState(null);
   const [lookup, setLookup] = useState("idle"); // idle | loading | found | new
   const autoFill = useRef({ name: "", gstin: "" }); // values filled from the customer lookup
@@ -29,7 +34,7 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
 
   useEffect(() => {
     if (!open) return;
-    setPays([{ method: "cash", amount: String(total), reference: "", auto: true }]);
+    setPays([{ method: "cash", amount: String(due), reference: "", auto: true }]);
     setDiscText(cart.bill_disc ? String(cart.bill_disc) : "");
     setDiscMode("rs");
     setShowGstin(!!cust.gstin);
@@ -46,8 +51,8 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
 
   // keep an untouched single payment equal to the total (e.g. after a bill discount)
   useEffect(() => {
-    setPays((ps) => (ps.length === 1 && ps[0].auto && ps[0].amount !== String(total) ? [{ ...ps[0], amount: String(total) }] : ps));
-  }, [total]);
+    setPays((ps) => (ps.length === 1 && ps[0].auto && ps[0].amount !== String(due) ? [{ ...ps[0], amount: String(due) }] : ps));
+  }, [total, due]);
 
   // returning customer lookup by phone → pre-fill name (and GSTIN)
   useEffect(() => {
@@ -88,9 +93,9 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
   const rows = useMemo(() => pays.map((p) => ({ ...p, amount: Number(p.amount) || 0 })), [pays]);
   const tendered = r2(rows.reduce((s, p) => s + p.amount, 0));
   const cash = r2(rows.filter((p) => p.method === "cash").reduce((s, p) => s + p.amount, 0));
-  const change = r2(tendered - total);
-  const short = r2(total - tendered);
-  const nonCashOver = r2(tendered - cash) > total;
+  const change = r2(tendered - due);
+  const short = r2(due - tendered);
+  const nonCashOver = r2(tendered - cash) > due;
   const canPay = total >= 0 && short <= 0 && change <= cash && !nonCashOver;
 
   const setPay = (i, patch) => setPays((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
@@ -99,7 +104,7 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
       const first = ps.map((p) => ({ ...p, auto: false }));
       const paid = first.reduce((s, p) => s + (Number(p.amount) || 0), 0);
       const used = new Set(first.map((p) => p.method));
-      return [...first, { method: METHODS.find((m) => !used.has(m)) || "upi", amount: String(Math.max(0, r2(total - paid))), reference: "", auto: false }];
+      return [...first, { method: METHODS.find((m) => !used.has(m)) || "upi", amount: String(Math.max(0, r2(due - paid))), reference: "", auto: false }];
     });
 
   const complete = async () => {
@@ -109,7 +114,7 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
     if (!cart.client_ref) setCart((c) => ({ ...c, client_ref: ref }));
     setBusy(true);
     try {
-      const r = await runBusy("Saving sale…", () => api("completeSale", {
+      const r = await runBusy(swap ? "Saving exchange…" : "Saving sale…", () => api(swap ? "exchange" : "completeSale", {
         client_ref: ref,
         lines: cart.lines.filter((l) => catalog.byVariant.has(l.variant_id)).map((l) => ({ variant_id: l.variant_id, qty: l.qty, discount: l.discount || 0 })),
         bill_disc: cart.bill_disc || 0,
@@ -119,14 +124,26 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
         notes: cart.notes || "",
         held_id: cart.held_id || null,
         gst_hidden: !!cart.gst_hidden,
+        // the swap: what is coming back, and how any difference goes out
+        ...(swap
+          ? { sale_id: swap.sale_id, items: swap.items, reason: swap.reason, refund_method: backMethod, override: swap.override || false }
+          : {}),
       }));
       const d = r.data;
-      patchStock(
-        d.items.map((i) => {
-          const it = catalog.byVariant.get(i.variant_id);
-          return { id: i.variant_id, stock_qty: r2((it ? it.stock : 0) - i.qty) };
-        }),
-      );
+      // a swap moves stock both ways: the replacement leaves the shelf, what came back returns to it
+      const patches = d.items.map((i) => {
+        const it = catalog.byVariant.get(i.variant_id);
+        return { id: i.variant_id, stock_qty: r2((it ? it.stock : 0) - i.qty) };
+      });
+      (swap ? swap.back || [] : []).forEach((b) => {
+        const row = patches.find((x) => x.id === b.variant_id);
+        if (row) row.stock_qty = r2(row.stock_qty + b.qty); // same product back out again
+        else {
+          const it = catalog.byVariant.get(b.variant_id);
+          patches.push({ id: b.variant_id, stock_qty: r2((it ? it.stock : 0) + b.qty) });
+        }
+      });
+      patchStock(patches);
       clearCart();
       onDone(d);
     } catch (e) {
@@ -136,7 +153,7 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
     }
   };
 
-  const quickCash = [total, Math.ceil(total / 100) * 100, Math.ceil(total / 500) * 500, Math.ceil(total / 2000) * 2000].filter((v, i, a) => v > 0 && a.indexOf(v) === i).slice(0, 4);
+  const quickCash = [due, Math.ceil(due / 100) * 100, Math.ceil(due / 500) * 500, Math.ceil(due / 2000) * 2000]
 
   return (
     <Sheet
@@ -154,7 +171,15 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
             </div>
           )}
           <Button className="big block" loading={busy} disabled={!canPay || !online} onClick={complete}>
-            {online ? `Complete · ${inr(total)}` : "Offline — can't save"}
+            {!online
+              ? "Offline — can't save"
+              : swap
+                ? back > 0
+                  ? `Exchange · give back ${inr(back)}`
+                  : due > 0
+                    ? `Exchange · collect ${inr(due)}`
+                    : "Complete exchange"
+                : `Complete · ${inr(total)}`}
           </Button>
         </>
       }
@@ -265,11 +290,30 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
         {preview.round_off !== 0 && (
           <div className="kv"><span className="k">Round off</span><span className="money">{inr(preview.round_off, { paise: true })}</span></div>
         )}
-        <div className="kv total"><span>To pay</span><span className="money">{inr(total)}</span></div>
+        <div className={"kv" + (swap ? "" : " total")}><span>{swap ? "Replacement" : "To pay"}</span><span className="money">{inr(total)}</span></div>
+        {swap && (
+          <>
+            <div className="kv"><span className="k">Exchange credit · {swap.invoice_no}</span><span className="money">-{inr(r2(credit - back))}</span></div>
+            <div className="kv total">
+              <span>{back > 0 ? "Back to customer" : "To pay"}</span>
+              <span className="money">{inr(back > 0 ? back : due)}</span>
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="section-label">Payment</div>
-      {pays.map((p, i) => (
+      {back > 0 ? (
+        <>
+          <div className="section-label">Give back {inr(back)} by</div>
+          <Seg value={backMethod} onChange={setBackMethod} options={METHODS.map((m) => ({ value: m, label: METHOD_LABEL[m] }))} />
+          <div className="hint">The replacement costs less than what came back, so the difference goes to the customer.</div>
+        </>
+      ) : due === 0 && swap ? (
+        <div className="card mt center small">An even swap — nothing to collect.</div>
+      ) : (
+        <div className="section-label">Payment</div>
+      )}
+      {back === 0 && !(swap && due === 0) && pays.map((p, i) => (
         <div className="card" key={i}>
           <div className="row">
             <div className="grow">
@@ -294,8 +338,8 @@ export default function CheckoutSheet({ open, onClose, preview, onDone }) {
           {p.method === "cash" && pays.length === 1 && (
             <div className="chips mt">
               {quickCash.map((v) => (
-                <button key={v} className={"chip" + (Number(p.amount) === v ? " active" : "")} onClick={() => setPay(i, { amount: String(v), auto: v === total })}>
-                  {v === total ? "Exact" : inr(v)}
+                <button key={v} className={"chip" + (Number(p.amount) === v ? " active" : "")} onClick={() => setPay(i, { amount: String(v), auto: v === due })}>
+                  {v === due ? "Exact" : inr(v)}
                 </button>
               ))}
             </div>

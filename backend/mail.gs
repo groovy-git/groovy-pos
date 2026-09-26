@@ -48,7 +48,7 @@ function dateNice_(ymd) {
     return parseInt(p[2], 10) + " " + m[parseInt(p[1], 10) - 1] + " " + p[0];
 }
 
-const METHOD_NAME_ = { cash: "Cash", upi: "UPI", card: "Card" };
+const METHOD_NAME_ = { cash: "Cash", upi: "UPI", card: "Card", exchange: "Exchange" };
 
 /** Builds subject + HTML + plain text for a reportDayClose_ result. */
 function dayCloseMail_(d, s, opt) {

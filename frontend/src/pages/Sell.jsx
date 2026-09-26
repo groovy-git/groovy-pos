@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, Clock, SearchX } from "lucide-react";
+import { ChevronRight, Clock, SearchX, Repeat2, X } from "lucide-react";
 import { useApp } from "../store";
 import TopBar from "../components/TopBar";
 import CameraScanner from "../components/CameraScanner";
@@ -127,6 +127,25 @@ export default function Sell() {
         }
       />
       <div className={"page" + (cart.lines.length ? " has-bar" : "")}>
+        {cart.exchange && (
+          <div className="card mb row gap-s" style={{ background: "var(--gold-soft)", alignItems: "flex-start" }}>
+            <Repeat2 size={18} style={{ flex: "none", marginTop: 2 }} />
+            <div className="grow">
+              <div className="bold">Exchange · {inr(cart.exchange.credit)} credit</div>
+              <div className="tiny">From bill {cart.exchange.invoice_no} — choose the replacement, then Checkout settles the difference.</div>
+            </div>
+            <button
+              className="icon-btn"
+              aria-label="Cancel exchange"
+              onClick={() => {
+                setCart((c) => ({ ...c, exchange: null }));
+                toast("Exchange called off — this is an ordinary bill now", "success");
+              }}
+            >
+              <X size={20} />
+            </button>
+          </div>
+        )}
         <SearchBar
           inputRef={searchRef}
           value={q}

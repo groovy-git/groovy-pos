@@ -1658,5 +1658,173 @@ check("day close counts the salesperson's refunds", capClose.returns > 0, capClo
 check("day close nets them off the sales", Math.abs(capClose.net - (capClose.sales - capClose.returns)) < 0.02, [capClose.sales, capClose.returns, capClose.net]);
 
 
+// ---- exchange: items back and a replacement, one credit note + one bill, settled in one go ----
+const xEnv = createEnv();
+xEnv.ctx.setupSheets();
+const xPwd = /Password: (\S+)/.exec(xEnv.alerts.pop())[1];
+const XT = xEnv.call("login", { email: "owner@groovy.test", password: xPwd }).data.token;
+const xCat = xEnv.call("bootstrap", {}, XT).data.catalog.categories[0].id;
+const x2r = (n) => Math.round(n * 100) / 100;
+const xMake = (name, code, price, stock) => {
+    xEnv.call("saveProduct", { name, category_id: xCat, gst_rate: 18,
+        variants: [{ size_label: "50ml", mrp: price, sell_price: price, cost: x2r(price / 2), opening_stock: stock === undefined ? 20 : stock, barcode: code }] }, XT);
+    return xEnv.call("getCatalog", {}, XT).data.variants.find((v) => v.barcode === code).id;
+};
+const XA = xMake("Xchg A", "XA", 1000);
+const XB = xMake("Xchg B", "XB", 1000);
+const XDEAR = xMake("Xchg Dear", "XD", 1600);
+const XCHEAP = xMake("Xchg Cheap", "XC", 600);
+const XLAST = xMake("Xchg Last One", "XL", 1000, 1);
+xEnv.call("saveUser", { name: "Xchg Sp", email: "x-sp@x.in", role: "salesperson", password: "secret1" }, XT);
+xEnv.call("saveUser", { name: "Xchg Mgr", email: "x-mgr@x.in", role: "manager", password: "secret2" }, XT);
+const XSP = xEnv.call("login", { email: "x-sp@x.in", password: "secret1" }).data.token;
+const XMG = xEnv.call("login", { email: "x-mgr@x.in", password: "secret2" }).data.token;
+
+let xRef = 0;
+const xBill = (variant, qty, token) => xEnv.call("completeSale", {
+    client_ref: "xb" + ++xRef, lines: [{ variant_id: variant, qty }], payments: [{ method: "cash", amount: 99999 }],
+    customer: { phone: "9876500001", name: "Exchange Customer" },
+}, token || XSP, 1).data;
+const xSwapOn = (bill, qty, lines, extra, token) => xEnv.call("exchange", Object.assign({
+    client_ref: "xx" + ++xRef, sale_id: bill.sale.id, items: [{ sale_item_id: bill.items[0].id, qty, restock: true }],
+    reason: "Wrong size", lines, payments: [], refund_method: "cash",
+}, extra || {}), token || XSP, 1);
+const xStock = (v) => xEnv.call("getCatalog", {}, XT).data.variants.find((x) => x.id === v).stock_qty;
+const xPays = (d) => d.payments.map((x) => [x.method, x.amount]);
+const xSale = (id) => xEnv.call("getSale", { id }, XT).data;
+
+// an even swap: nothing crosses the counter
+const xb1 = xBill(XA, 3);
+const xaBefore = xStock(XA);
+const xbBefore = xStock(XB);
+const x1 = xSwapOn(xb1, 1, [{ variant_id: XB, qty: 1 }]);
+check("an even swap goes through", x1.success, x1.message);
+check("...the new bill is for the replacement only", x1.data.sale.grand_total === 1000, x1.data.sale.grand_total);
+check("...no cash moves at all", x1.data.payments.every((x) => x.method === "exchange"), xPays(x1.data));
+check("...the bill's payment row names the credit note", x1.data.payments[0].reference === x1.data.exchange.credit_note_no,
+    [x1.data.payments[0].reference, x1.data.exchange.credit_note_no]);
+check("...the bill number ran on without a gap", /00002$/.test(x1.data.sale.invoice_no), x1.data.sale.invoice_no);
+check("...the credit note is the first of its series", /CN\/\d\d-\d\d\/0001$/.test(x1.data.exchange.credit_note_no), x1.data.exchange.credit_note_no);
+check("...what came back is on the shelf", xStock(XA) === xaBefore + 1, [xaBefore, xStock(XA)]);
+check("...what went out has left it", xStock(XB) === xbBefore - 1, [xbBefore, xStock(XB)]);
+const xb1After = xSale(xb1.sale.id);
+check("...the old bill is part returned", xb1After.sale.status === "part_returned", xb1After.sale.status);
+check("...and its refund row is the exchange, not cash", xb1After.payments.filter((x) => x.amount < 0).every((x) => x.method === "exchange"),
+    xb1After.payments.filter((x) => x.amount < 0).map((x) => x.method));
+const xDay = xEnv.call("report", { type: "day_close" }, XT, 1).data;
+check("the day close shows the exchange as its own method", !!xDay.methods.exchange && xDay.methods.exchange.net === 0, xDay.methods);
+check("...and the cash it expects is untouched by it", xDay.expected_cash === xDay.methods.cash.net, [xDay.expected_cash, xDay.methods.cash.net]);
+
+// a dearer replacement: the customer pays the difference
+const xb2 = xBill(XA, 1);
+const x2 = xSwapOn(xb2, 1, [{ variant_id: XDEAR, qty: 1 }], { payments: [{ method: "cash", amount: 600 }] });
+check("a dearer replacement goes through", x2.success, x2.message);
+check("...only the difference is collected", x2r(x2.data.payments.filter((x) => x.method === "cash").reduce((a, x) => a + x.amount, 0)) === 600, xPays(x2.data));
+check("...the credit covers the rest", x2.data.payments.filter((x) => x.method === "exchange")[0].amount === 1000, xPays(x2.data));
+check("...nothing is left owing", x2.data.exchange.refunded === 0, x2.data.exchange);
+check("a short difference is refused", /short/i.test(xSwapOn(xBill(XA, 1), 1, [{ variant_id: XDEAR, qty: 1 }], { payments: [{ method: "cash", amount: 100 }] }).message));
+
+// a cheaper replacement: money goes back
+const xb3 = xBill(XA, 1);
+const x3 = xSwapOn(xb3, 1, [{ variant_id: XCHEAP, qty: 1 }], { refund_method: "upi" });
+check("a cheaper replacement goes through", x3.success, x3.message);
+check("...the leftover is handed back", x3.data.exchange.refunded === 400, x3.data.exchange);
+check("...by the method chosen", xSale(xb3.sale.id).payments.some((x) => x.method === "upi" && x.amount === -400),
+    xSale(xb3.sale.id).payments.map((x) => [x.method, x.amount]));
+check("...and the message says so", /400 back to the customer/.test(x3.message), x3.message);
+
+// the leaked-bottle case: the same product back out again, when it was the last one
+const xb4 = xBill(XLAST, 1);
+check("the shelf is empty after that sale", xStock(XLAST) === 0, xStock(XLAST));
+const x4 = xSwapOn(xb4, 1, [{ variant_id: XLAST, qty: 1 }]);
+check("a leaked bottle can be swapped for the same one, last in stock", x4.success, x4.message);
+check("...and the shelf is back where it started", xStock(XLAST) === 0, xStock(XLAST));
+
+// nothing is written when the swap does not add up
+const xb5 = xBill(XA, 1);
+const xCnBefore = xEnv.ctx.rows_("Returns").length;
+const xSaleBefore = xEnv.ctx.rows_("Sales").length;
+const xStockBefore = xStock(XA);
+const xNoStock = xSwapOn(xb5, 1, [{ variant_id: XLAST, qty: 5 }]);
+check("a replacement that is not in stock is refused", /in stock/.test(xNoStock.message), xNoStock.message);
+check("...and no credit note was written", xEnv.ctx.rows_("Returns").length === xCnBefore, [xCnBefore, xEnv.ctx.rows_("Returns").length]);
+check("...no bill was written", xEnv.ctx.rows_("Sales").length === xSaleBefore, [xSaleBefore, xEnv.ctx.rows_("Sales").length]);
+check("...no stock moved", xStock(XA) === xStockBefore, [xStockBefore, xStock(XA)]);
+check("...the old bill is untouched", xSale(xb5.sale.id).sale.status === "completed");
+const xNextOk = xSwapOn(xb5, 1, [{ variant_id: XB, qty: 1 }]);
+check("...and the next exchange skips no bill number", xNextOk.success && Number(/(\d+)$/.exec(xNextOk.data.sale.invoice_no)[1]) === xSaleBefore + 1,
+    [xNextOk.data && xNextOk.data.sale.invoice_no, xSaleBefore]);
+
+// a retried exchange saves once
+const xb6 = xBill(XA, 1);
+const xRetryReq = { client_ref: "x-retry", sale_id: xb6.sale.id, items: [{ sale_item_id: xb6.items[0].id, qty: 1, restock: true }],
+    reason: "Wrong item", lines: [{ variant_id: XB, qty: 1 }], payments: [], refund_method: "cash" };
+const xOnce = xEnv.call("exchange", xRetryReq, XSP, 1);
+const xTwice = xEnv.call("exchange", xRetryReq, XSP, 1);
+check("a retried exchange returns the one already saved", xTwice.success && xTwice.data.sale.id === xOnce.data.sale.id, xTwice.message);
+check("...and writes nothing twice", xEnv.ctx.rows_("Returns").filter((r) => r.sale_id === xb6.sale.id).length === 1);
+check("...the reply still names the credit note", xTwice.data.exchange.credit_note_no === xOnce.data.exchange.credit_note_no,
+    [xTwice.data.exchange, xOnce.data.exchange]);
+
+// a salesperson is limited on cash out, not on the size of a swap
+const xbBig = xBill(XDEAR, 2, XMG); // 3,200, well over the 2,000 cash limit
+const xEvenBig = xEnv.call("exchange", { client_ref: "x-big", sale_id: xbBig.sale.id,
+    items: [{ sale_item_id: xbBig.items[0].id, qty: 2, restock: true }], reason: "Wrong item",
+    lines: [{ variant_id: XDEAR, qty: 2 }], payments: [], refund_method: "cash" }, XSP, 1);
+check("a salesperson may swap 3,200 evenly", xEvenBig.success, xEvenBig.message);
+const xbCash = xBill(XDEAR, 2, XMG);
+const xCashReq = { sale_id: xbCash.sale.id, items: [{ sale_item_id: xbCash.items[0].id, qty: 2, restock: true }],
+    reason: "Wrong item", lines: [{ variant_id: XCHEAP, qty: 1 }], payments: [], refund_method: "cash" };
+const xBigCash = xEnv.call("exchange", Object.assign({ client_ref: "x-cashback" }, xCashReq), XSP, 1);
+check("but not hand back 2,600 in cash", /at most ₹2000 on one bill/.test(xBigCash.message), xBigCash.message);
+check("...and that refusal wrote nothing", xSale(xbCash.sale.id).sale.status === "completed");
+check("a manager can hand that back", xEnv.call("exchange", Object.assign({ client_ref: "x-cashback-m" }, xCashReq), XMG, 1).success);
+xEnv.call("saveSettings", { settings: { salesperson_max_return: "0" } }, XT);
+const xbOff = xBill(XA, 1);
+check("with the limit at 0 a salesperson still swaps evenly", xEnv.call("exchange", { client_ref: "x-off-even", sale_id: xbOff.sale.id,
+    items: [{ sale_item_id: xbOff.items[0].id, qty: 1, restock: true }], reason: "Wrong item",
+    lines: [{ variant_id: XB, qty: 1 }], payments: [], refund_method: "cash" }, XSP, 1).success);
+const xbOff2 = xBill(XA, 1);
+check("...but hands back no cash at all", /Only a manager can hand money back/.test(xEnv.call("exchange", { client_ref: "x-off-cash", sale_id: xbOff2.sale.id,
+    items: [{ sale_item_id: xbOff2.items[0].id, qty: 1, restock: true }], reason: "Wrong item",
+    lines: [{ variant_id: XCHEAP, qty: 1 }], payments: [], refund_method: "cash" }, XSP, 1).message));
+xEnv.call("saveSettings", { settings: { salesperson_max_return: "2000" } }, XT);
+
+// the rules a plain return already has still apply
+const xbOld = xEnv.call("completeSale", { client_ref: "x-old", lines: [{ variant_id: XA, qty: 1 }],
+    payments: [{ method: "cash", amount: 9999 }], _at: "2026-01-07 12:00:00" }, XSP, 1).data;
+const xLate = xSwapOn(xbOld, 1, [{ variant_id: XB, qty: 1 }]);
+check("a bill past the return window cannot be swapped", /Return window/.test(xLate.message), xLate.message);
+check("...unless the owner says so", xEnv.call("exchange", { client_ref: "x-old-ok", sale_id: xbOld.sale.id,
+    items: [{ sale_item_id: xbOld.items[0].id, qty: 1, restock: true }], reason: "Damaged",
+    lines: [{ variant_id: XB, qty: 1 }], payments: [], refund_method: "cash", override: true }, XT, 1).success);
+const xKN = ok(xEnv.call("saveBranch", { name: "Kalyani Nagar", code: "KN" }, XT), "branch for the exchange tests").id;
+ok(xEnv.call("transferStock", { to_branch_id: xKN, lines: [{ variant_id: XA, qty: 5 }] }, XT, 1), "stock to KN for exchanges");
+const xbKN = xEnv.call("completeSale", { client_ref: "x-kn", lines: [{ variant_id: XA, qty: 1 }],
+    payments: [{ method: "cash", amount: 9999 }] }, XT, xKN).data;
+check("another branch's bill cannot be swapped here", /made at Kalyani Nagar/.test(xSwapOn(xbKN, 1, [{ variant_id: XB, qty: 1 }]).message));
+
+// the credit note cannot be conjured up on an ordinary bill
+check("a plain sale cannot be paid with an exchange", /Unknown payment method/.test(xEnv.call("completeSale", { client_ref: "x-cheat",
+    lines: [{ variant_id: XA, qty: 1 }], payments: [{ method: "exchange", amount: 1000 }] }, XSP, 1).message));
+check("a plain refund cannot be marked as an exchange", /Choose how the refund is paid/.test(xEnv.call("returnItems", { sale_id: xb1.sale.id,
+    items: [{ sale_item_id: xb1.items[0].id, qty: 1 }], refund_method: "exchange", reason: "x" }, XMG, 1).message));
+
+// a bill part paid by a credit note is not voidable
+const xbVoid = xBill(XA, 1);
+const xvSwap = xSwapOn(xbVoid, 1, [{ variant_id: XB, qty: 1 }]);
+check("the swap to be voided saved", xvSwap.success, xvSwap.message);
+check("a bill part paid by an exchange cannot be voided",
+    /part paid by an exchange/.test(xEnv.call("voidSale", { id: xvSwap.data.sale.id, reason: "mistake" }, XMG, 1).message));
+check("an ordinary bill can still be voided", xEnv.call("voidSale", { id: xBill(XA, 1, XMG).sale.id, reason: "mistake" }, XMG, 1).success);
+
+// the books
+const xGst = ok(xEnv.call("report", { type: "gst_summary" }, XT, 1), "GST summary with exchanges");
+check("GST counts the exchange's credit notes", xGst.credit_notes_by_rate.length > 0 && xGst.credit_notes_by_rate[0].total > 0, xGst.credit_notes_by_rate);
+check("GST counts the exchange's bills", xGst.totals.total > 0, xGst.totals);
+const xBoard = ok(xEnv.call("report", { type: "salesman_performance" }, XT, 1), "leaderboard with exchanges");
+check("the leaderboard nets an exchange off the seller", xBoard.rows.some((r) => r.returns > 0), xBoard.rows && xBoard.rows.map((r) => [r.name, r.sales, r.returns]));
+
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
