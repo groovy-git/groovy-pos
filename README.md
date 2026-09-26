@@ -12,7 +12,7 @@ Staff phones (installed app)  ──►  Google Apps Script (backend)  ──►
 - **All data lives in your Google Sheet.** GitHub only hosts the app's screens, not the data.
 - **Every request needs a login.** Roles and prices are always checked on the server, so a phone cannot change them.
 - **Three roles:**
-    - **Admin**: everything.
+    - **Owner**: everything.
     - **Manager**: stock, returns, expenses, reports.
     - **Salesman**: billing, with a discount limit.
     - Everyone can sell, and every bill records who sold it.
@@ -23,7 +23,7 @@ Staff phones (installed app)  ──►  Google Apps Script (backend)  ──►
 
 - **One Google account that owns everything.** It will own the Sheet and the script, and the day-close emails are sent from it.
     - Use a shop account (for example a new Gmail made for the shop), not a staff member's personal account.
-    - Setup makes this account's email the first admin login, and "Forgot password" codes are sent to it.
+    - Setup makes this account's email the first Owner login, and "Forgot password" codes are sent to it.
 - **A GitHub account.** It's free.
 - **Cost:** nothing. Google Sheets, Apps Script and GitHub Pages (with a public repository) are all free.
 
@@ -51,7 +51,7 @@ Staff phones (installed app)  ──►  Google Apps Script (backend)  ──►
 5. Click **Groovy POS → 1. Setup / repair sheets**.
     - Google will ask for permission. Choose **Advanced → Go to project → Allow**.
     - Setup creates all the tabs.
-    - It also shows an **admin email and password**. The email is the Google account you're signed in with. Write these down.
+    - It also shows an **Owner email and password**. The email is the Google account you're signed in with. Write these down.
     - After your first login, change the password straight away in **More → My account → Change password**.
 6. Optional: click **Groovy POS → Run self-tests**. You should see "All 35 tests passed".
 7. Deploy the backend as a web app:
@@ -107,7 +107,7 @@ The app prints an **80 mm receipt** or an **A4 tax invoice** using the phone's o
 
 ## 4. First day checklist
 
-1. Log in as admin, then open **More → Settings**:
+1. Log in as the owner, then open **More → Settings**:
     - **Shop** tab: enter the GSTIN, address and bill footer.
     - **Billing** tab: check the **salesperson discount limit**, the **return window** and **1 tola = 12 ml**.
     - **Categories** tab: confirm the HSN codes and GST rates with your accountant.
@@ -154,21 +154,21 @@ One app and one Google Sheet run every branch.
 - **Selling:** sales, Stock In and adjustments always use the branch you're working at.
 - **Transfers:** to move stock, go to **Stock → Transfer**. Scan the items and choose the branch to send them to. The stock moves immediately, and there's a record under **Stock → Transfers**.
 - **Returns and voids:** only at the branch that made the bill.
-- **Admins** can also pick **All branches** to see combined figures with a per-branch breakdown on Home and Day close. Selling isn't possible in that view.
+- **The owner** can also pick **All branches** to see combined figures with a per-branch breakdown on Home and Day close. Selling isn't possible in that view.
 
 If you have only one branch, none of this shows. The app works exactly like a single shop.
 
 ## Day-close emails
 
 - **Email button (anyone):** go to **Reports → Day close → Email**.
-    - A salesperson's email contains only their own sales. A manager's or admin's covers the whole branch.
+    - A salesperson's email contains only their own sales. A manager's or the owner's covers the whole branch.
     - Tick **Send me a copy** to get a copy yourself.
     - Each person can send up to 5 of these a day.
-- **Nightly email (admin, optional):** go to **More → Settings → Email**.
+- **Nightly email (owner, optional):** go to **More → Settings → Email**.
     - Turn **Nightly email On**, choose the hour, and choose whether to skip days with no sales.
     - Save, then tap **Send today's day close now** to test.
     - Turn it **Off** there at any time.
-- **Recipients:** the addresses in **Send day-close emails to** (the owner list, which receives every branch). If that box is empty, the emails go to all admins. With several branches, each branch sends its own email to that branch's list plus the owner list.
+- **Recipients:** the addresses in **Send day-close emails to** (the owner list, which receives every branch). If that box is empty, the emails go to every Owner account. With several branches, each branch sends its own email to that branch's list plus the owner list.
 - **Sender:** emails come from the Google account that owns the Sheet. A personal Gmail account can send about 100 emails a day, which is plenty.
 - The Sheet menu also has **Groovy POS → Email today's day close now**.
 
@@ -192,7 +192,7 @@ Every bill is also kept as an A4 PDF in your Google Drive:
 - **GST / Non-GST:** a bill goes to **GST** when it is printed as a **TAX INVOICE** — that is, "Show GST on bill" was on **and** your GSTIN is set in Settings. Everything else goes to **Non-GST**. Your accountant can then take just the GST folder. A credit note is filed with its original bill.
 
 - **Automatic:** every 15 minutes Google saves PDFs for new bills and credit notes. Checkout is never slowed down, and anything that fails is retried on the next run.
-- **By hand:** open **Sales → a bill → Save PDF to Drive** (about 2–3 seconds). If the bill already has a PDF it shows **"PDF saved in Google Drive"**; admins get an **Open** link.
+- **By hand:** open **Sales → a bill → Save PDF to Drive** (about 2–3 seconds). If the bill already has a PDF it shows **"PDF saved in Google Drive"**; the owner gets an **Open** link.
 - **On/off:** **More → Settings → Billing → Save invoice PDFs to Google Drive automatically**. Saving by hand always works.
 - The PDFs are made by the Google script from the saved bill, not by the phone, so the app stays light.
 - **Keep the folder private.** The files belong to the shop account; share them with customers through WhatsApp or Share in the app instead.
@@ -220,7 +220,7 @@ Every bill is also kept as an A4 PDF in your Google Drive:
 - **Don't type into the Google Sheet by hand.** Use Stock In or Adjust in the app so stock history stays correct. Looking at or exporting the sheet is fine.
 - **Backups:** Google Sheets keeps version history automatically. You can also use **File → Make a copy** once a month.
 - **Staff leaving:** deactivate them in Staff. Their past sales stay in the reports.
-- **Removing a product:** hide it with the eye icon on Edit product. Its bills and reports stay intact. An admin can **Delete** a product only if it was never sold, stocked in, adjusted or transferred, for example a duplicate added by mistake.
+- **Removing a product:** hide it with the eye icon on Edit product. Its bills and reports stay intact. The owner can **Delete** a product only if it was never sold, stocked in, adjusted or transferred, for example a duplicate added by mistake.
 - **Load demo data only into a test copy of the sheet:** **Groovy POS → 2. Load demo data**. It refuses to run if products already exist.
 - **Going live after testing:** first back up with **File → Make a copy**, then run **Groovy POS → 3. Reset test data (keep setup)…** and type `RESET`.
     - It clears bills, payments, returns, held bills, expenses, customers, stock history, stock-ins and transfers. It sets all stock to 0 and restarts bill numbers at 00001.
@@ -246,9 +246,9 @@ Every bill is also kept as an A4 PDF in your Google Drive:
 | App shows old screens                                     | Close the app fully and reopen it. The update installs automatically.                                                    |
 | Camera doesn't open                                       | Allow camera access for the site or app in phone settings. On iPhone, use Safari to install the app.                     |
 | "Sheet … missing"                                         | Run **Groovy POS → 1. Setup / repair sheets** again. It is safe to repeat.                                               |
-| Forgot admin password                                     | Use **Forgot password?** on the login screen. A 6-digit code is emailed to you.                                          |
+| Forgot the owner password                                     | Use **Forgot password?** on the login screen. A 6-digit code is emailed to you.                                          |
 | "The app was updated — run Setup…"                        | Open the Sheet and run **Groovy POS → 1. Setup / repair sheets**.                                                        |
-| "You are not assigned to any active branch"               | Admin: go to **Staff** and set the person's **Works at**, or turn the branch back on in **Settings → Branches**.         |
+| "You are not assigned to any active branch"               | Owner: go to **Staff** and set the person's **Works at**, or turn the branch back on in **Settings → Branches**.         |
 | "Server busy, please try again"                           | Two phones saved at the same moment. Tap again.                                                                          |
 | The first action after a quiet period takes a few seconds | Normal. Google is starting the script up.                                                                                |
 | Printer doesn't appear on Android                         | Install the printer's print service (see **Printing bills**).                                                            |

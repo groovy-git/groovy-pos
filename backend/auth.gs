@@ -19,29 +19,37 @@ function newSalt_() {
 /**
  * The role, by its current name.
  *
- * This role used to be called "salesman" and staff rows written before the rename still say that.
- * Everything reads roles through here, so both spellings work and only the new one is ever written —
- * otherwise a row saying the old word would match nothing and that person would be refused every
- * action. The rows themselves are rewritten once by migrateRoleNames_().
+ * Roles have been renamed twice — "salesman" became "salesperson", "admin" became "owner" — and staff
+ * rows written before each rename still hold the old word. Everything reads roles through here, so
+ * every spelling works and only the current one is ever written; otherwise a row saying an old word
+ * would match nothing and that person would be refused every action, which for an owner means being
+ * locked out of the very screen that could put it right. The rows are rewritten by migrateRoleNames_().
+ *
+ * The old words are spelled in pieces on purpose: a search-and-replace across the codebase would
+ * otherwise rewrite them here too and turn this function into a no-op that silently matches nothing.
+ * That very mistake happened during the first rename, and only the tests caught it.
  */
-const OLD_SALESPERSON_ROLE_ = "sales" + "man"; // written in pieces so a search-and-replace can't eat it
+const OLD_ROLE_NAMES_ = {};
+OLD_ROLE_NAMES_["sales" + "man"] = "salesperson";
+OLD_ROLE_NAMES_["ad" + "min"] = "owner";
 
 function roleName_(r) {
     const s = str_(r);
-    return s === OLD_SALESPERSON_ROLE_ ? "salesperson" : s;
+    return OLD_ROLE_NAMES_[s] || s;
 }
 
 function publicUser_(u) {
+    const role = roleName_(u.role);
     return {
-        id: u.id, name: u.name, email: u.email, phone: u.phone, role: roleName_(u.role), active: u.active,
-        home_branch_id: u.role === "admin" ? 0 : homeBranch_(u),
+        id: u.id, name: u.name, email: u.email, phone: u.phone, role: role, active: u.active,
+        home_branch_id: role === "owner" ? 0 : homeBranch_(u),
         branch_ids: allowedBranchIds_(u), // active branches this person may work at
     };
 }
 
-// home branch + "works at" list from the staff form (admins work everywhere)
+// home branch + "works at" list from the staff form (the owner works everywhere)
 function cleanUserBranches_(p, role) {
-    if (role === "admin") return { branch_id: 0, branch_ids: "" };
+    if (role === "owner") return { branch_id: 0, branch_ids: "" };
     const existing = rows_("Branches").map((b) => b.id);
     let list = parseIdList_(Array.isArray(p.branch_ids) ? p.branch_ids.join(",") : p.branch_ids).filter((id) => existing.indexOf(id) >= 0);
     let home = Number(p.branch_id) || 0;
@@ -84,7 +92,7 @@ function authenticate_(token) {
     const user = findBy_("Users", "id", Number(uid));
     if (!user || !user.active) {
         cache.remove("s_" + token);
-        fail_("Account inactive. Contact admin.", "AUTH_EXPIRED");
+        fail_("Account inactive. Contact the owner.", "AUTH_EXPIRED");
     }
     // a copy, so a row still holding the old role name reads correctly everywhere without the
     // cached sheet row being altered behind the back of whatever else reads it this request
@@ -125,7 +133,7 @@ function apiLogin_(p) {
         cache.put(fk, String(fails + 1), 600);
         fail_("Invalid email or password");
     }
-    if (!u.active) fail_("Account inactive. Contact admin.");
+    if (!u.active) fail_("Account inactive. Contact the owner.");
     cache.remove(fk);
 
     const token = withLock_(() => {
@@ -242,7 +250,7 @@ function apiChangePassword_(p, ctx) {
     });
 }
 
-/* ---------- user management (admin) ---------- */
+/* ---------- user management (owner) ---------- */
 
 function apiListUsers_(p, ctx) {
     // just the salesperson column — the rest of the bill is not needed to answer "has any?"
@@ -283,7 +291,7 @@ function apiSaveUser_(p, ctx) {
             const u = findBy_("Users", "id", Number(p.id));
             if (!u) fail_("User not found");
             if (dup && dup.id !== u.id) fail_("Email already in use");
-            if (u.id === ctx.user.id && role !== "admin") fail_("You cannot remove your own admin role");
+            if (u.id === ctx.user.id && role !== "owner") fail_("You cannot remove your own Owner role");
             const wasRole = roleName_(u.role);
             u.name = name;
             u.email = email;
@@ -299,7 +307,7 @@ function apiSaveUser_(p, ctx) {
             }
             u.updated_at = now;
             updateRows_("Users", [u]);
-            // the catalogue carries cost price for managers and admins only, so a role change means
+            // the catalogue carries cost price for managers and the owner only, so a role change means
             // this person's copy is now the wrong shape — bump so their app fetches it again
             if (u.role !== wasRole) bumpCatalogVersion_();
             log_(ctx, "UPDATE", "Users", u.id, name + " (" + role + ")");
@@ -366,10 +374,11 @@ function migrateRoleNames_() {
     // No "already done" marker: staff is a handful of rows, so looking is as cheap as remembering,
     // and this way a row that turns up with the old name later — restored from a backup, or typed
     // into the sheet by hand — is put right too instead of being left behind forever.
-    if (!rows_("Users").some((u) => str_(u.role) === OLD_SALESPERSON_ROLE_)) return 0;
+    const stale = (u) => !!OLD_ROLE_NAMES_[str_(u.role)];
+    if (!rows_("Users").some(stale)) return 0;
     return withLock_(() => {
-        const rows = rows_("Users").filter((u) => str_(u.role) === OLD_SALESPERSON_ROLE_);
-        rows.forEach((u) => (u.role = "salesperson"));
+        const rows = rows_("Users").filter(stale);
+        rows.forEach((u) => (u.role = roleName_(u.role)));
         if (rows.length) writeColumn_("Users", rows, "role");
         return rows.length;
     });

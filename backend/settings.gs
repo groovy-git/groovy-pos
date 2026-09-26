@@ -50,11 +50,11 @@ function bumpStockVersion_() {
     setSetting_("stock_version", num_(setting_("stock_version"), 1) + 1, 0);
 }
 
-// settings visible to logged-in users (counters hidden; report recipients only for admins)
+// settings visible to logged-in users (counters hidden; report recipients only for the owner)
 function publicSettings_(ctx) {
     const s = settingsMap_();
     const out = {};
-    const admin = !ctx || ctx.user.role === "admin";
+    const admin = !ctx || ctx.user.role === "owner";
     Object.keys(s).forEach((k) => {
         if (k.indexOf("inv_seq_") === 0 || k.indexOf("cn_seq_") === 0 || k === "internal_barcode_seq" || k === "sku_seq") return;
         if (k === "report_emails" && !admin) return;

@@ -57,5 +57,5 @@ function apiDeleteExpense_(p, ctx) {
 }
 
 function assertExpenseBranch_(ctx, e) {
-    if (ctx.user.role !== "admin" && allowedBranchIds_(ctx.user).indexOf(bid_(e.branch_id)) < 0) fail_("This expense belongs to another branch");
+    if (ctx.user.role !== "owner" && allowedBranchIds_(ctx.user).indexOf(bid_(e.branch_id)) < 0) fail_("This expense belongs to another branch");
 }

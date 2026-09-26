@@ -74,7 +74,7 @@ export function BranchPicker() {
   );
 }
 
-// admins on "All branches" must pick a branch before selling / moving stock
+// the owner on "All branches" must pick a branch before selling / moving stock
 export function NeedBranch({ what = "continue" }) {
   const { myBranches, switchBranch } = useApp();
   return (

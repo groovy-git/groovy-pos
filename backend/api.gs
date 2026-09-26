@@ -5,9 +5,9 @@
  * comes from the server-side session, never from the request.
  */
 
-const A_ = ["admin"];
-const AM_ = ["admin", "manager"];
-const ALL_ = ["admin", "manager", "salesperson"];
+const A_ = ["owner"];
+const AM_ = ["owner", "manager"];
+const ALL_ = ["owner", "manager", "salesperson"];
 
 // built lazily: Apps Script evaluates files in load order, so top-level code
 // must not reference functions from other files
@@ -45,7 +45,7 @@ function actions_() {
     movements: { fn: apiMovements_, roles: ALL_ },
     emailDayClose: { fn: apiEmailDayClose_, roles: ALL_ }, // salesperson gets own figures only
 
-    // admin + manager
+    // owner + manager
     saveBrand: { fn: apiSaveBrand_, roles: AM_ },
     saveCategory: { fn: apiSaveCategory_, roles: AM_ },
     deleteCategory: { fn: apiDeleteCategory_, roles: A_ },
@@ -68,7 +68,7 @@ function actions_() {
     saveExpense: { fn: apiSaveExpense_, roles: AM_ },
     deleteExpense: { fn: apiDeleteExpense_, roles: AM_ },
 
-    // admin only
+    // owner only
     listUsers: { fn: apiListUsers_, roles: A_ },
     saveUser: { fn: apiSaveUser_, roles: A_ },
     toggleUser: { fn: apiToggleUser_, roles: A_ },

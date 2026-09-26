@@ -12,13 +12,13 @@ const APP = {
     IMAGE_FOLDER: "GroovyPOS_Images",
 };
 
-const ROLES = ["admin", "manager", "salesperson"];
+const ROLES = ["owner", "manager", "salesperson"];
 
 const SCHEMA = {
     Users: {
         id: "n", name: "s", email: "s", phone: "s", role: "s", pwd_hash: "s", salt: "s",
         active: "n", otp: "s", otp_exp: "s", created_at: "d", updated_at: "d",
-        // home branch (0 for admins) + comma list of branches they may work at ("" = all)
+        // home branch (0 for the owner) + comma list of branches they may work at ("" = all)
         branch_id: "n", branch_ids: "s",
     },
     Sessions: { token: "s", user_id: "n", created_at: "d", expires_at: "d", device: "s" },
@@ -120,7 +120,7 @@ const DEFAULT_SETTINGS = {
     allow_negative_stock: "no",
     receipt_footer: "Thank you for shopping with Groovy Fragrances! Returns accepted within 3 days for damaged/incorrect items with bill.",
     expense_categories: "Rent,Salary,Electricity,Tea & Snacks,Transport,Packaging,Marketing,Maintenance,Other",
-    // day-close emails: empty list = all admins; nightly email is off until switched on in Settings
+    // day-close emails: empty list = every Owner account; nightly email is off until switched on in Settings
     report_emails: "",
     nightly_report: "no",
     nightly_report_hour: "22",

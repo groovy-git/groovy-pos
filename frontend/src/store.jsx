@@ -23,7 +23,12 @@ const save = (k, v) => {
   }
 };
 
-const OLD_SALESPERSON_ROLE = "sales" + "man";
+// Roles have been renamed: "salesman" → "salesperson", "admin" → "owner". A phone that logged in
+// before a rename still has the old word saved against its user, so the role is read through here.
+// The old words are spelled in pieces so a search-and-replace cannot quietly make this a no-op.
+const OLD_ROLE_NAMES = {};
+OLD_ROLE_NAMES["sales" + "man"] = "salesperson";
+OLD_ROLE_NAMES["ad" + "min"] = "owner";
 
 const EMPTY_CART = { lines: [], bill_disc: 0, customer: { phone: "", name: "", gstin: "" }, salesman_id: null, notes: "", held_id: null, gst_hidden: false };
 // a bill in progress belongs to the branch it was started at
@@ -215,7 +220,7 @@ export function AppProvider({ children }) {
     save("gp_sellers", d.sellers);
     save("gp_branches", d.branches);
     // first time on this phone with a choice of branches → ask where they're working
-    const choices = d.user.role === "admin" ? d.branches.length : d.user.branch_ids.length;
+    const choices = d.user.role === "owner" ? d.branches.length : d.user.branch_ids.length;
     if (choices > 1 && !localStorage.getItem(pickedKey(d.user.id))) setPickBranch(true);
     return d;
   }, [applyCatalog, applyBranch]);
@@ -311,17 +316,14 @@ export function AppProvider({ children }) {
     });
   }, []);
 
-  // This role used to be called "sales" + "man" (spelled in pieces so a search-and-replace cannot
-  // quietly turn this line into a no-op). A phone that logged in before the rename still has the old
-  // word saved against the user, so the role is read through here rather than compared raw.
-  const role = user ? (user.role === OLD_SALESPERSON_ROLE ? "salesperson" : user.role) : null;
+  const role = user ? OLD_ROLE_NAMES[user.role] || user.role : null;
   const multiBranch = branches.length > 1;
   const branch = branches.find((b) => b.id === branchId) || null;
   // branches this person can switch to (admins: all)
-  const myBranches = !user ? [] : role === "admin" ? branches : branches.filter((b) => (user.branch_ids || []).includes(b.id));
+  const myBranches = !user ? [] : role === "owner" ? branches : branches.filter((b) => (user.branch_ids || []).includes(b.id));
 
   const value = {
-    user, role, isManager: role === "admin" || role === "manager", isAdmin: role === "admin",
+    user, role, isManager: role === "owner" || role === "manager", isAdmin: role === "owner",
     settings, setSettings: (s) => { setSettings(s); save("gp_settings", s); },
     catalog, rawCatalog, refreshCatalog, patchStock,
     sellers, setSellers,

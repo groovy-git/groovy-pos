@@ -25,7 +25,7 @@ const { ctx, call } = env;
 ctx.setupSheets();
 const setupMsg = env.alerts.pop();
 const pwd = /Password: (\S+)/.exec(setupMsg)[1];
-check("setup created admin", !!pwd, setupMsg);
+check("setup created the owner", !!pwd, setupMsg);
 ctx.setupSheets(); // idempotent
 check("setup rerun ok", /already existed/.test(env.alerts.pop()));
 const testMsg = ctx.runTests();
@@ -34,9 +34,9 @@ check("unit tests", /All \d+ tests passed/.test(testMsg), testMsg);
 // ---- auth ----
 check("no token rejected", call("getCatalog", {}).code === "AUTH_EXPIRED");
 check("bad password", !call("login", { email: "owner@groovy.test", password: "nope" }).success);
-const login = ok(call("login", { email: "OWNER@groovy.test", password: pwd }), "admin login");
+const login = ok(call("login", { email: "OWNER@groovy.test", password: pwd }), "owner login");
 const T = login.token;
-check("admin role", login.user.role === "admin");
+check("owner role", login.user.role === "owner");
 
 // ---- users ----
 ok(call("saveUser", { name: "Sameer", email: "sameer@x.in", role: "salesperson", password: "secret1" }, T), "add salesperson");
@@ -138,7 +138,7 @@ check("manager sold-by other", mSale.salesman_name === "Ayesha" && mSale.created
 const s1List = ok(call("listSales", {}, S1), "salesperson list").sales;
 check("salesperson sees only own", s1List.length === 1 && s1List[0].salesman_name === "Sameer", s1List);
 check("salesperson cannot open other bill", !call("getSale", { id: mSale.id }, S1).success);
-check("admin sees all", ok(call("listSales", {}, T), "admin list").sales.length === 2);
+check("the owner sees all", ok(call("listSales", {}, T), "owner list").sales.length === 2);
 
 // ---- returns + void ----
 const vAsadItem = sale.items.find((i) => i.variant_id === vAsad.id);
@@ -165,7 +165,7 @@ check("leaderboard items as billed", lbS.items === 4, lbS);
 check("new customer credited to the first bill's salesperson", lbS.new_customers === 1, lbS);
 check("dashboard today items + new customers", dash.today.items === 4 && dash.today.new_customers === 1, dash.today);
 check("voided bill is in nobody's figures", !dash.leaderboard.today.some((r) => r.name === "Ayesha"), dash.leaderboard.today);
-const lsSum = ok(call("listSales", {}, T), "admin list summary").summary;
+const lsSum = ok(call("listSales", {}, T), "owner list summary").summary;
 check("list summary counts the same, voided bill excluded", lsSum.items === 4 && lsSum.new_customers === 1, lsSum);
 const dc = ok(call("report", { type: "day_close" }, T), "day close");
 // items sold (for refilling): net of returns, voided bills excluded, current stock shown
@@ -244,7 +244,7 @@ env.mails.length = 0;
 let em = call("emailDayClose", {}, S1);
 check("salesperson can email day close", em.success, em);
 let mail = env.mails.pop();
-check("no list → goes to admins", mail && mail.to === "owner@groovy.test", mail && mail.to);
+check("no list → goes to the owner", mail && mail.to === "owner@groovy.test", mail && mail.to);
 check("salesperson mail is own figures", /\(Sameer\)/.test(mail.subject) && /Your sales/.test(mail.htmlBody) && !/Cash in drawer/.test(mail.htmlBody), mail.subject);
 check("reply-to is the sender", mail.replyTo === "sameer@x.in");
 ok(call("emailDayClose", { copy_me: true }, M), "manager emails whole shop with copy");
@@ -278,7 +278,7 @@ const held = ok(call("holdBill", { label: "Rahul", cart: { lines: [{ variant_id:
 check("held listed", ok(call("listHeld", {}, S1), "list held").length === 1);
 ok(call("deleteHeld", { id: held.id }, S1), "delete held");
 check("customer created", ok(call("findCustomer", { phone: "9876543210" }, S2), "find cust").name === "Rahul");
-check("logs admin only", call("listLogs", {}, M).code === "FORBIDDEN" && ok(call("listLogs", {}, T), "logs").length > 5);
+check("logs owner only", call("listLogs", {}, M).code === "FORBIDDEN" && ok(call("listLogs", {}, T), "logs").length > 5);
 
 // ---- deactivate kills session ----
 ok(call("toggleUser", { id: ayesha.id }, T), "deactivate ayesha");
@@ -584,7 +584,7 @@ check("void refused at another branch", /made at Kalyani Nagar/.test(call("voidS
 ok(call("voidSale", { id: rKN.id, reason: "Test" }, T, KN), "void at KN");
 check("KN manager can't open a Kondhwa bill", !call("getSale", { id: rKD.id }, MEENA).success);
 
-// admin "All branches"
+// the owner's "All branches"
 check("no selling on All branches", branchesErr(call("completeSale", sellArgs({}), T, 0)));
 check("no stock in on All branches", branchesErr(call("stockIn", { lines: [{ variant_id: vBottle.id, qty: 1 }] }, T, 0)));
 const dashAll = ok(call("dashboard", {}, T, 0), "dashboard all branches");
@@ -679,7 +679,7 @@ const after = ok(call("listSales", { from: "2000-01-01" }, T, 0), "sales with ow
 check("app unaffected by own column", after.bills === before.bills && after.net === before.net, { before, after });
 check("empty spare columns still trimmed on new sheets", envM.ss.getSheetByName("Sales").getMaxColumns() === schemaCols);
 
-// ---- delete a product added by mistake (admin, never used) ----
+// ---- delete a product added by mistake (owner, never used) ----
 const mistake = ok(call("saveProduct", {
     name: "Typo Oud", brand_name: "Lattafa", category_id: cat("Eau De Parfum"), hsn: "3303", gst_rate: 18,
     variants: [{ size_label: "50ml", barcode: "DEL0001", mrp: 900, sell_price: 800, cost: 500, opening_stock: 3 }],
@@ -693,7 +693,7 @@ check("salesperson cannot delete product", sDel.code === "FORBIDDEN", sDel);
 const heldDel = ok(call("holdBill", { label: "del test", cart: { lines: [{ variant_id: mVid, qty: 1 }] } }, T, 1), "hold mistaken product");
 check("held bill blocks delete", /held bill/.test(call("deleteProduct", { id: mistake }, T, 1).message || ""));
 ok(call("deleteHeld", { id: heldDel.id }, T, 1), "drop held bill");
-ok(call("deleteProduct", { id: mistake }, T, 1), "admin deletes unused product");
+ok(call("deleteProduct", { id: mistake }, T, 1), "owner deletes unused product");
 check("product rows gone", vmRun(`resetReqCache_(); !rows_("Products").some((p) => p.id === ${mistake}) && !rows_("Variants").some((v) => v.id === ${mVid}) && !rows_("Branch_Stock").some((b) => b.variant_id === ${mVid}) && !rows_("Stock_Movements").some((m) => m.variant_id === ${mVid})`));
 check("gone from catalog", !call("getCatalog", {}, T, 1).data.variants.some((v) => v.barcode === "DEL0001"));
 check("delete logged", vmRun(`resetReqCache_(); rows_("Activity_Logs").some((l) => l.action === "DELETE" && l.entity === "Products" && /Typo Oud/.test(l.details))`));
@@ -705,10 +705,10 @@ const usedDel = call("deleteProduct", { id: asad.id }, T, 1);
 check("sold product cannot be deleted", !usedDel.success && /hide it instead/.test(usedDel.message), usedDel);
 check("sold product still there", call("getCatalog", {}, T, 1).data.variants.some((v) => v.barcode === "0628113420084"));
 
-// ---- delete an empty category (admin) ----
+// ---- delete an empty category (owner) ----
 const tempCat = ok(call("saveCategory", { name: "Temp Cat", default_hsn: "3307", default_gst: 18 }, T), "add temp category").id;
 check("manager cannot delete category", call("deleteCategory", { id: tempCat }, M).code === "FORBIDDEN");
-ok(call("deleteCategory", { id: tempCat }, T), "admin deletes empty category");
+ok(call("deleteCategory", { id: tempCat }, T), "owner deletes empty category");
 check("category gone from catalog", !call("getCatalog", {}, T, 1).data.categories.some((c) => c.id === tempCat));
 check("category delete logged", vmRun(`resetReqCache_(); rows_("Activity_Logs").some((l) => l.action === "DELETE" && l.entity === "Categories" && l.details === "Temp Cat")`));
 const usedCat = call("deleteCategory", { id: cat("Eau De Parfum") }, T);
@@ -1186,7 +1186,7 @@ check("every staff row now reads salesperson", rnEnv.ctx.rows_("Users").every((u
 check("a second sweep finds nothing left to do", rnEnv.ctx.migrateRoleNames_() === 0);
 check("the swept account still works", rnEnv.call("listSales", {}, OLDT).success);
 
-// admins and managers are untouched by any of this
+// the owner and managers are untouched by any of this
 rnEnv.call("saveUser", { name: "Mgr", email: "mgr-rn@x.in", role: "manager", password: "secret7" }, RNT);
 const MGRT = rnEnv.call("login", { email: "mgr-rn@x.in", password: "secret7" }).data.token;
 check("a manager still has manager rights", rnEnv.call("stockIn", { lines: [{ variant_id: rnVid, qty: 1, unit_cost: 40 }] }, MGRT).success);
@@ -1489,6 +1489,77 @@ rdNoBk.drive.sheetFile.parent = rdNoBk.drive.root.createFolder("Groovy POS");
 rdNoBk.ctx.setupSheets();
 rdNoBk.alerts.pop();
 check("with no backup, the warning says so", /no finished backup yet/.test(rdNoBk.ctx.backupStatusLine_()), rdNoBk.ctx.backupStatusLine_());
+
+// ---- "admin" became "owner": every power must survive, for a row still stored the old way ----
+const owEnv = createEnv();
+owEnv.ctx.setupSheets();
+const owPwd = /Password: (\S+)/.exec(owEnv.alerts.pop())[1];
+const OWT0 = owEnv.call("login", { email: "owner@groovy.test", password: owPwd }).data.token;
+const owCat = owEnv.call("bootstrap", {}, OWT0).data.catalog.categories[0].id;
+owEnv.call("saveProduct", {
+    name: "Owner Tester", category_id: owCat, gst_rate: 18,
+    variants: [{ size_label: "5ml", mrp: 100, sell_price: 100, cost: 40, opening_stock: 50, barcode: "OW1" }],
+}, OWT0);
+const owVid = owEnv.call("getCatalog", {}, OWT0).data.variants.find((v) => v.barcode === "OW1").id;
+owEnv.call("saveUser", { name: "Mgr Owner Test", email: "mgr-ow@x.in", role: "manager", password: "secret1" }, OWT0);
+owEnv.call("saveUser", { name: "Sp Owner Test", email: "sp-ow@x.in", role: "salesperson", password: "secret2" }, OWT0);
+const OWM = owEnv.call("login", { email: "mgr-ow@x.in", password: "secret1" }).data.token;
+const OWS = owEnv.call("login", { email: "sp-ow@x.in", password: "secret2" }).data.token;
+
+// put the owner's row back to the word it was stored under before this rename
+const owRow = owEnv.ctx.findBy_("Users", "email", "owner@groovy.test");
+owRow.role = "ad" + "min";
+owEnv.ctx.updateRows_("Users", [owRow]);
+const owLogin = owEnv.call("login", { email: "owner@groovy.test", password: owPwd });
+check("old role name: the owner can still log in", owLogin.success, owLogin.message);
+const OWT = owLogin.data.token;
+check("old role name: reported as owner", owLogin.data.user.role === "owner", owLogin.data.user.role);
+check("old role name: still works at every branch", owLogin.data.user.home_branch_id === 0, owLogin.data.user.home_branch_id);
+
+// every power the owner alone has, with the row still stored the old way
+check("owner power: staff", owEnv.call("listUsers", {}, OWT).success);
+check("owner power: settings", owEnv.call("saveSettings", { settings: { tagline: "Smell Of Perfection" } }, OWT).success);
+check("owner power: activity log", owEnv.call("listLogs", {}, OWT).success);
+check("owner power: branches", owEnv.call("listBranches", {}, OWT).success);
+check("owner power: add a branch", owEnv.call("saveBranch", { name: "Owner Test Branch", code: "OT" }, OWT).success);
+const owTempCat = owEnv.call("saveCategory", { name: "Owner Temp Cat" }, OWT).data.id;
+check("owner power: delete a category", owEnv.call("deleteCategory", { id: owTempCat }, OWT).success);
+const owMistake = owEnv.call("saveProduct", { name: "Mistake", category_id: owCat, gst_rate: 18, variants: [{ size_label: "1ml", sell_price: 10, mrp: 10 }] }, OWT).data.id;
+check("owner power: delete a product", owEnv.call("deleteProduct", { id: owMistake }, OWT).success);
+check("owner power: reads across all branches", owEnv.call("dashboard", {}, OWT, 0).success);
+
+// and the others are still kept out of all of it
+check("a manager is still refused staff", owEnv.call("listUsers", {}, OWM).code === "FORBIDDEN");
+check("a manager is still refused settings", owEnv.call("saveSettings", { settings: { tagline: "x" } }, OWM).code === "FORBIDDEN");
+check("a manager is still refused the activity log", owEnv.call("listLogs", {}, OWM).code === "FORBIDDEN");
+check("a manager is still refused branches", owEnv.call("listBranches", {}, OWM).code === "FORBIDDEN");
+check("a salesperson is still refused staff", owEnv.call("listUsers", {}, OWS).code === "FORBIDDEN");
+check("a salesperson is still refused stock-in", owEnv.call("stockIn", { lines: [{ variant_id: owVid, qty: 1 }] }, OWS).code === "FORBIDDEN");
+check("a manager still cannot see report emails", owEnv.call("getSettings", {}, OWM).data.report_emails === undefined);
+check("the owner can see report emails", owEnv.call("getSettings", {}, OWT).data.report_emails !== undefined);
+
+// the two that would fail without a sound: nobody gets the day close, or the nightly job finds no one
+owEnv.call("saveSettings", { settings: { report_emails: "" } }, OWT); // empty list = send to the owner
+const owMailsBefore = owEnv.mails.length;
+const owMail = owEnv.call("emailDayClose", {}, OWT);
+check("day close still reaches the owner when no list is set", owMail.success && owEnv.mails.length === owMailsBefore + 1, owMail.message);
+check("...and it is addressed to them", /owner@groovy\.test/.test(owEnv.mails[owEnv.mails.length - 1].to), owEnv.mails[owEnv.mails.length - 1].to);
+check("the nightly job can still find an owner to run as", !!owEnv.ctx.rows_("Users").find((u) => owEnv.ctx.roleName_(u.role) === "owner"));
+
+// an app that has not updated yet still saves an Admin, stored under the new name
+const owLegacy = owEnv.call("saveUser", { name: "Legacy Owner", email: "legacy-ow@x.in", role: "ad" + "min", password: "secret3" }, OWT);
+check("an app sending the old role name still saves", owLegacy.success, owLegacy.message);
+check("...and it is stored as owner", owEnv.ctx.findBy_("Users", "email", "legacy-ow@x.in").role === "owner",
+    owEnv.ctx.findBy_("Users", "email", "legacy-ow@x.in").role);
+check("the new account has the owner's powers", owEnv.call("listUsers", {}, owEnv.call("login", { email: "legacy-ow@x.in", password: "secret3" }).data.token).success);
+
+// the sweep rewrites what is left, both old words, and is safe to run twice
+check("rows still holding an old role name are swept", owEnv.ctx.migrateRoleNames_() >= 1);
+check("no old role name is left in the sheet", owEnv.ctx.rows_("Users").every((u) => u.role === "owner" || u.role === "manager" || u.role === "salesperson"),
+    owEnv.ctx.rows_("Users").map((u) => u.role));
+check("a second sweep finds nothing to do", owEnv.ctx.migrateRoleNames_() === 0);
+check("the swept owner still has every power", owEnv.call("listUsers", {}, OWT).success && owEnv.call("listLogs", {}, OWT).success);
+check("an unknown role is still rejected", !owEnv.call("saveUser", { name: "Nope", email: "nope-ow@x.in", role: "boss", password: "secret4" }, OWT).success);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

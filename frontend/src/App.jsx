@@ -140,7 +140,7 @@ class ScreenGuard extends Component {
 // who may open which page (server enforces the same rules on every action)
 const ACCESS = {
   home: "all", sell: "all", sales: "all", customers: "all", more: "all", account: "all", reports: "all", stock: "all",
-  expenses: "mgr", users: "admin", settings: "admin", logs: "admin",
+  expenses: "mgr", users: "owner", settings: "owner", logs: "owner",
 };
 
 function Page({ route }) {
@@ -184,7 +184,7 @@ export default function App() {
 
   const allowed = (p) => {
     const a = ACCESS[p] || "all";
-    return a === "all" || (a === "mgr" && isManager) || (a === "admin" && isAdmin);
+    return a === "all" || (a === "mgr" && isManager) || (a === "owner" && isAdmin);
   };
   const page = allowed(route.page) ? route.page : "home";
   const active = ["users", "settings", "logs", "account", "customers", "expenses", "reports"].includes(page) ? "more" : page;

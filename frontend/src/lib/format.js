@@ -98,4 +98,5 @@ export const titleCase = (s) => String(s || "").replace(/\b\w/g, (c) => c.toUppe
 
 export const METHOD_LABEL = { cash: "Cash", upi: "UPI", card: "Card" };
 // both keys: a phone that logged in before the rename still has "salesman" saved against the user
-export const ROLE_LABEL = { admin: "Admin", manager: "Manager", salesperson: "Salesperson", salesman: "Salesperson" };
+// old keys kept as well: a phone that logged in before a rename still has the old word cached
+export const ROLE_LABEL = { owner: "Owner", admin: "Owner", manager: "Manager", salesperson: "Salesperson", salesman: "Salesperson" };

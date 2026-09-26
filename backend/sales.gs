@@ -1,7 +1,7 @@
 /** Sales: checkout, held bills, list/detail, void, returns (credit notes). */
 
 function canSeeSale_(ctx, s) {
-    if (ctx.user.role === "admin") return true;
+    if (ctx.user.role === "owner") return true;
     if (ctx.user.role === "salesperson") return s.salesman_id === ctx.user.id || s.created_by === ctx.user.id;
     return allowedBranchIds_(ctx.user).indexOf(bid_(s.branch_id)) >= 0; // manager: branches they work at
 }
@@ -292,8 +292,8 @@ function apiReturnItems_(p, ctx) {
         if (s.status === "voided" || s.status === "returned") fail_("Nothing left to return on this bill");
         const days = num_(setting_("return_days"), 3);
         const ageDays = Math.floor((new Date(todayStr_()).getTime() - new Date(s.date.slice(0, 10)).getTime()) / 86400000);
-        if (ageDays > days && !(p.override && ctx.user.role === "admin"))
-            fail_("Return window of " + days + " days is over (bill is " + ageDays + " days old). Only admin can override.");
+        if (ageDays > days && !(p.override && ctx.user.role === "owner"))
+            fail_("Return window of " + days + " days is over (bill is " + ageDays + " days old). Only the owner can override.");
 
         const now = nowStr_();
         const allItems = rows_("Sale_Items").filter((i) => i.sale_id === s.id);
@@ -407,7 +407,7 @@ function apiDeleteHeld_(p, ctx) {
         const h = findBy_("Held_Bills", "id", Number(p.id));
         if (!h) return { message: "Already removed" };
         if (ctx.user.role === "salesperson" && h.user_id !== ctx.user.id) fail_("Not your held bill");
-        if (ctx.user.role !== "admin" && allowedBranchIds_(ctx.user).indexOf(bid_(h.branch_id)) < 0) fail_("This held bill belongs to another branch");
+        if (ctx.user.role !== "owner" && allowedBranchIds_(ctx.user).indexOf(bid_(h.branch_id)) < 0) fail_("This held bill belongs to another branch");
         deleteRow_("Held_Bills", h);
         return { message: "Held bill removed" };
     });

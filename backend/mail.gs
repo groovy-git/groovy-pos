@@ -1,7 +1,7 @@
 /**
  * Day-close emails.
  *  A) apiEmailDayClose_ — any staff member emails the day close from the app
- *     (a salesperson gets their own figures only; manager/admin: whole shop).
+ *     (a salesperson gets their own figures only; manager and owner: whole shop).
  *  B) sendNightlyReport — time-driven trigger that emails the whole-shop day close every night.
  *     Switched on/off from Settings; syncNightlyTrigger_ installs or removes the trigger.
  * Emails are sent from the Google account that owns this script.
@@ -18,18 +18,18 @@ function splitEmails_(s) {
         .filter(Boolean);
 }
 
-// a branch's own recipients + the owner list (Settings → Email, or all admins)
+// a branch's own recipients + the owner list (Settings → Email, or every Owner account)
 function recipientsFor_(branchId) {
     const own = branchId ? splitEmails_((branchById_(branchId) || {}).report_emails) : [];
     return own.concat(reportRecipients_().filter((e) => own.indexOf(e) < 0));
 }
 
-// Settings list, or every active admin when the list is empty
+// Settings list, or every active Owner account when the list is empty
 function reportRecipients_() {
     const list = splitEmails_(setting_("report_emails"));
     if (list.length) return list;
     return rows_("Users")
-        .filter((u) => u.active && u.role === "admin" && u.email)
+        .filter((u) => u.active && roleName_(u.role) === "owner" && u.email)
         .map((u) => u.email);
 }
 
@@ -183,7 +183,7 @@ function apiEmailDayClose_(p, ctx) {
     const date = str_(p.date) || todayStr_();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > todayStr_()) fail_("Choose a valid date");
     const to = recipientsFor_(ctx.branch_id);
-    if (!to.length) fail_("No report email is set. Ask the admin to add one in Settings → Email.");
+    if (!to.length) fail_("No report email is set. Ask the owner to add one in Settings → Email.");
 
     const cache = CacheService.getScriptCache();
     const key = "mail_dc_" + ctx.user.id + "_" + todayStr_();
@@ -221,7 +221,7 @@ function sendBranchDayCloses_(skipEmpty, footer) {
     return activeBranches_().map((b) => {
         const to = recipientsFor_(b.id);
         if (!to.length) return b.name + ": no recipients";
-        const sys = { user: { id: 0, name: "Nightly report", role: "admin", email: "" }, branch_id: b.id };
+        const sys = { user: { id: 0, name: "Nightly report", role: "owner", email: "" }, branch_id: b.id };
         const d = reportDayClose_({ date }, sys);
         if (skipEmpty && !d.bills && !d.returns && !d.voided.length) return b.name + ": skipped (no sales)";
         sendMail_(to, dayCloseMail_(d, s, { salesperson: "", footer }), {});

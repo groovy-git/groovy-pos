@@ -72,7 +72,7 @@ export default function SettingsPage() {
             <Field label="Invoice prefix" hint={`Bills look like ${f.invoice_prefix || "GF"}/26-27/00001 and restart every April`}>
               <input className="input" maxLength={4} value={f.invoice_prefix || ""} onChange={(e) => setF({ ...f, invoice_prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })} />
             </Field>
-            <Field label="Max discount a salesperson can give (%)" hint="Managers and admins have no limit">
+            <Field label="Max discount a salesperson can give (%)" hint="Managers and the owner have no limit">
               <input className="input" inputMode="decimal" value={f.salesman_max_disc_pct || ""} onChange={set("salesman_max_disc_pct")} />
             </Field>
             <Field label="Return window (days)"><input className="input" inputMode="numeric" value={f.return_days || ""} onChange={set("return_days")} /></Field>
@@ -163,7 +163,7 @@ function EmailSettings({ f, setF, saved }) {
   return (
     <>
       <div className="card mt">
-        <Field label="Send day-close emails to" hint="Separate with commas. Leave empty to send to all admins.">
+        <Field label="Send day-close emails to" hint="Separate with commas. Leave empty to send to every Owner account.">
           <textarea
             className="input"
             inputMode="email"

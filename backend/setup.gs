@@ -126,7 +126,7 @@ function logoutEveryone() {
 
 /**
  * Hand someone a new password without any email. This is the way back in when the owner forgets
- * their own — nobody else can reset an admin — and the quickest way to sort out a member of staff.
+ * their own — nobody else can reset an owner — and the quickest way to sort out a member of staff.
  * Only someone who can edit this spreadsheet can run it, which is the root of trust for the app.
  * Returns the new password so the caller can show it once; it is never written to the log.
  */
@@ -386,13 +386,13 @@ function setupSheets() {
         try {
             email = Session.getEffectiveUser().getEmail();
         } catch (e) {}
-        email = (email || "admin@groovyfragrances.in").toLowerCase();
+        email = (email || "owner@groovyfragrances.in").toLowerCase();
         const pwd = "groovy@" + Math.floor(1000 + Math.random() * 9000);
         const salt = newSalt_();
         appendRows_("Users", [
-            { id: 1, name: "Owner", email, phone: "", role: "admin", pwd_hash: hashPwd_(pwd, salt), salt, active: 1, otp: "", otp_exp: "", created_at: now, updated_at: now },
+            { id: 1, name: "Owner", email, phone: "", role: "owner", pwd_hash: hashPwd_(pwd, salt), salt, active: 1, otp: "", otp_exp: "", created_at: now, updated_at: now },
         ]);
-        adminMsg = "\n\nAdmin login created:\nEmail: " + email + "\nPassword: " + pwd + "\n\nWrite this down and change the password after first login.";
+        adminMsg = "\n\nOwner login created:\nEmail: " + email + "\nPassword: " + pwd + "\n\nWrite this down and change the password after first login.";
     }
     SpreadsheetApp.flush();
     const msg =
@@ -421,7 +421,7 @@ function seedDemo() {
         alert_("Products already exist — demo data is only for an empty test copy of the sheet.");
         return;
     }
-    const admin = rows_("Users").find((u) => u.role === "admin");
+    const admin = rows_("Users").find((u) => roleName_(u.role) === "owner");
     if (!admin) throw new Error("Run setup first");
     // demo shop with two branches: opening stock at Kondhwa, part of it transferred to Kalyani Nagar
     const ctx = { user: admin, token: "", branch_id: 1 };
@@ -500,7 +500,7 @@ function seedDemo() {
             n++;
             resetReqCache_();
             const seller = sellers[n % sellers.length];
-            const branch = seller.role === "admin" || seller.role === "manager" ? (n % 2 ? 1 : kn) : homeBranch_(seller);
+            const branch = roleName_(seller.role) === "owner" || seller.role === "manager" ? (n % 2 ? 1 : kn) : homeBranch_(seller);
             const inStock = rows_("Variants").filter((v) => stockOf_(v.id, branch) >= (v.unit === "ml" ? 12 : 2));
             if (!inStock.length) continue;
             const lines = [];

@@ -12,7 +12,7 @@ export const getToken = () => localStorage.getItem(TOKEN_KEY) || "";
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 
-// branch this phone is working at (0 = all branches, admins only); the server re-checks it
+// branch this phone is working at (0 = all branches, the owner only); the server re-checks it
 const BRANCH_KEY = "gp_branch";
 export const getBranch = () => Number(localStorage.getItem(BRANCH_KEY) || 0);
 export const setBranch = (id) => localStorage.setItem(BRANCH_KEY, String(id || 0));

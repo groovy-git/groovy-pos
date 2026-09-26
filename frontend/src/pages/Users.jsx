@@ -8,7 +8,7 @@ import { ROLE_LABEL } from "../lib/format";
 import TopBar from "../components/TopBar";
 import { Avatar, Button, Empty, Field, Seg, Sheet, SkeletonList, useConfirm } from "../components/ui";
 
-const ROLE_ORDER = { admin: 0, manager: 1, salesperson: 2 };
+const ROLE_ORDER = { owner: 0, admin: 0, manager: 1, salesperson: 2 };
 
 export default function UsersPage() {
   const { toast, user, setSellers, branches, multiBranch } = useApp();
@@ -47,7 +47,7 @@ export default function UsersPage() {
       <TopBar title="Staff" back="more" right={loading && list ? <span className="tiny muted">updating…</span> : null} />
       <div className="page">
         <p className="small muted" style={{ marginTop: 0 }}>
-          Everyone can sell. Managers also handle stock, returns, expenses and reports. Only admins manage staff and settings.
+          Everyone can sell. Managers also handle stock, returns, expenses and reports. Only the owner manages staff and settings.
         </p>
         {!list ? (
           <SkeletonList />
@@ -57,17 +57,17 @@ export default function UsersPage() {
           <div className="list">
             {ordered.map((u) => (
               <button key={u.id} className="list-item" onClick={() => setEdit(u)} style={u.active ? null : { opacity: 0.55 }}>
-                <Avatar name={u.name} gold={u.role === "admin"} />
+                <Avatar name={u.name} gold={u.role === "owner"} />
                 <div className="grow">
                   <div className="title">
                     {u.name} {u.id === user.id && <span className="muted small">(you)</span>}
                   </div>
                   <div className="sub ellipsis">
                     {u.email}
-                    {multiBranch && u.role !== "admin" && u.branch_id ? " · " + branchName(u.branch_id) : ""}
+                    {multiBranch && u.role !== "owner" && u.branch_id ? " · " + branchName(u.branch_id) : ""}
                   </div>
                 </div>
-                <span className={"badge " + (u.active ? (u.role === "admin" ? "dark" : u.role === "manager" ? "gold" : "") : "bad")}>
+                <span className={"badge " + (u.active ? (u.role === "owner" ? "dark" : u.role === "manager" ? "gold" : "") : "bad")}>
                   {u.active ? ROLE_LABEL[u.role] : "Inactive"}
                 </span>
               </button>
@@ -149,11 +149,11 @@ function UserSheet({ u, onClose, onSaved }) {
           options={[
             { value: "salesperson", label: "Salesperson" },
             { value: "manager", label: "Manager" },
-            { value: "admin", label: "Admin" },
+            { value: "owner", label: "Owner" },
           ]}
         />
       </div>
-      {multiBranch && f.role !== "admin" && (
+      {multiBranch && f.role !== "owner" && (
         <>
           <Field label="Home branch" hint="Where the app opens after login">
             <select className="input" value={f.branch_id || ""} onChange={(e) => setF({ ...f, branch_id: Number(e.target.value) })}>

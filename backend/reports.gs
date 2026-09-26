@@ -545,7 +545,7 @@ function reportExpenses_(p, ctx) {
     };
 }
 
-// totals per branch for the admin's "All branches" view
+// totals per branch for the owner's "All branches" view
 function branchBreakdown_(sales, returns, from, to, monthFrom) {
     return activeBranches_().map((b) => {
         const mine = (v) => bid_(v) === b.id;

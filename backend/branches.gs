@@ -1,7 +1,7 @@
 /**
  * Branches: shops sharing one product list and price list. Stock, bills (own invoice series),
  * expenses and reports are per branch. Staff may work at any branch in their "works at" list;
- * admins can also use branch 0 = "All branches" for reading and reports.
+ * the owner can also use branch 0 = "All branches" for reading and reports.
  */
 
 // rows written before branches existed belong to branch 1
@@ -33,10 +33,10 @@ function parseIdList_(s) {
         .filter(Boolean);
 }
 
-// active branches this user may work at (admins: all)
+// active branches this user may work at (the owner: all)
 function allowedBranchIds_(user) {
     const active = activeBranches_().map((b) => b.id);
-    if (user.role === "admin") return active;
+    if (user.role === "owner") return active;
     const list = parseIdList_(user.branch_ids);
     return list.length ? active.filter((id) => list.indexOf(id) >= 0) : active;
 }
@@ -55,12 +55,12 @@ function resolveBranch_(user, requested) {
     const active = activeBranches_();
     if (!active.length) fail_("No active branch. Run Setup from the Groovy POS menu.", "BRANCH");
     if (active.length === 1) {
-        if (user.role !== "admin" && allowedBranchIds_(user).indexOf(active[0].id) < 0) fail_("You are not assigned to any active branch", "BRANCH");
+        if (user.role !== "owner" && allowedBranchIds_(user).indexOf(active[0].id) < 0) fail_("You are not assigned to any active branch", "BRANCH");
         return active[0].id;
     }
     const r = Number(requested) || 0;
-    if (user.role !== "admin" && !allowedBranchIds_(user).length) fail_("You are not assigned to any active branch. Ask the admin.", "BRANCH");
-    if (!r) return user.role === "admin" ? 0 : homeBranch_(user);
+    if (user.role !== "owner" && !allowedBranchIds_(user).length) fail_("You are not assigned to any active branch. Ask the owner.", "BRANCH");
+    if (!r) return user.role === "owner" ? 0 : homeBranch_(user);
     if (allowedBranchIds_(user).indexOf(r) < 0) fail_("You don't work at this branch. Choose another branch.", "BRANCH");
     return r;
 }
@@ -71,7 +71,7 @@ function requireBranch_(ctx) {
     return ctx.branch_id;
 }
 
-// report scope: 0 = all branches (admin only)
+// report scope: 0 = all branches (owner only)
 function inBranch_(ctx, v) {
     return !ctx.branch_id || bid_(v) === ctx.branch_id;
 }
@@ -167,7 +167,7 @@ function branchCode_(branchId) {
     return b ? str_(b.code) : "";
 }
 
-/* ---------- branch management (admin) ---------- */
+/* ---------- branch management (owner) ---------- */
 
 function apiListBranches_(p, ctx) {
     // one column instead of every bill ever written, 30 columns wide

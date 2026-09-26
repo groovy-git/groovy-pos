@@ -3,7 +3,7 @@
 const GST_RATES = [0, 5, 12, 18, 28];
 
 function isStaffManager_(ctx) {
-    return ctx.user.role === "admin" || ctx.user.role === "manager";
+    return ctx.user.role === "owner" || ctx.user.role === "manager";
 }
 
 /**
@@ -365,7 +365,7 @@ function apiToggleProduct_(p, ctx) {
 }
 
 /**
- * Permanently delete a product added by mistake (admin). Only allowed while nothing refers to it:
+ * Permanently delete a product added by mistake (owner). Only allowed while nothing refers to it:
  * no bills, returns, stock-in, adjustments or transfers (opening stock is fine) and no held bill.
  * Anything already used must be hidden instead, so bills and GST records stay complete.
  */
