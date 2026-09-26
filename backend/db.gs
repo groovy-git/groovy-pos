@@ -8,8 +8,10 @@ let REQ_CACHE_ = {};
 /** Forget the rows read so far but keep the open spreadsheet — for a second pass inside one lock. */
 function rereadRows_() {
     const ss = REQ_CACHE_.__ss;
+    const api = REQ_CACHE_.__api;
     REQ_CACHE_ = {};
     if (ss) REQ_CACHE_.__ss = ss;
+    if (api) REQ_CACHE_.__api = api;
 }
 
 function resetReqCache_() {
@@ -24,9 +26,17 @@ function ss_() {
     return REQ_CACHE_.__ss;
 }
 
+/**
+ * Within one app request (`__api`, set by dispatch_) a sheet's handle and header row are looked up
+ * once and reused: no app action adds, renames or deletes a sheet or rewrites a header, so they
+ * cannot change under it. Setup, backups and timers never set the flag and look them up every time.
+ */
 function sheet_(name) {
+    const k = "__sh_" + name;
+    if (REQ_CACHE_.__api && REQ_CACHE_[k]) return REQ_CACHE_[k];
     const sh = ss_().getSheetByName(name);
     if (!sh) throw new AppError_("Sheet '" + name + "' missing. Run Setup from the Groovy POS menu.");
+    if (REQ_CACHE_.__api) REQ_CACHE_[k] = sh;
     return sh;
 }
 
@@ -118,9 +128,23 @@ function headerCell_(sh, name, field) {
     const keys = cols_(name);
     const c = keys.indexOf(field) + 1;
     if (c < 1) throw new Error("Unknown column " + field + " on " + name);
-    if (String(sh.getRange(1, c).getValue()) !== field)
+    if (String(headerValue_(sh, name, c)) !== field)
         throw new AppError_("The app was updated — open the Google Sheet and run Groovy POS → 1. Setup / repair sheets.", "SETUP");
     return c;
+}
+
+// the header in column c; in an app request the whole header row is read once and kept
+function headerValue_(sh, name, c) {
+    if (!REQ_CACHE_.__api) return sh.getRange(1, c).getValue();
+    const k = "__hdr_" + name;
+    if (!REQ_CACHE_[k]) {
+        try {
+            REQ_CACHE_[k] = sh.getRange(1, 1, 1, cols_(name).length).getValues()[0];
+        } catch (e) {
+            return sh.getRange(1, c).getValue(); // sheet narrower than the schema — check just this cell, as before
+        }
+    }
+    return REQ_CACHE_[k][c - 1];
 }
 
 /** The newest n rows — for lists that show the latest first (logs, batches, movements). */
@@ -390,9 +414,7 @@ function withLock_(fn) {
     if (!lock.tryLock(20000)) throw new AppError_("Server busy, please try again.");
     try {
         // re-read fresh data inside the lock
-        const ss = REQ_CACHE_.__ss;
-        REQ_CACHE_ = {};
-        if (ss) REQ_CACHE_.__ss = ss;
+        rereadRows_();
         return fn();
     } finally {
         SpreadsheetApp.flush();

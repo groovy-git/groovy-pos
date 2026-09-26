@@ -151,6 +151,7 @@ function json_(obj) {
 
 function dispatch_(req) {
     resetReqCache_();
+    REQ_CACHE_.__api = true; // sheet handles and header rows can be reused for this request (db.gs sheet_)
     const action = req && req.action;
     const acts = actions_();
     const def = Object.prototype.hasOwnProperty.call(acts, action) ? acts[action] : null;

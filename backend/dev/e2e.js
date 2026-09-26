@@ -1851,6 +1851,17 @@ const xbSplit = xEnv.call("completeSale", { client_ref: "x-split", lines: [{ var
     payments: [{ method: "upi", amount: 500, reference: "U1" }, { method: "cash", amount: 2000 }] }, XT, 1).data;
 check("split-payment reply equals the bill read back", sameData(xbSplit, xRead(xbSplit.sale.id, XT, 1)), { reply: xbSplit, read: xRead(xbSplit.sale.id, XT, 1) });
 
+// a sheet whose header is out of date still asks for Setup, now that header rows are read once per request
+const xSalesSh = xEnv.ss.getSheetByName("Sales");
+const xDateCol = require("vm").runInContext('Object.keys(SCHEMA.Sales).indexOf("date")', xEnv.ctx) + 1;
+xSalesSh.getRange(1, xDateCol).setValue("date_old");
+const xStale = xEnv.call("listSales", {}, XT, 1);
+check("an out-of-date header asks for Setup", !xStale.success && xStale.code === "SETUP", xStale);
+const xStaleDash = xEnv.call("dashboard", {}, XT, 1);
+check("...on a screen that reads several columns too", !xStaleDash.success && xStaleDash.code === "SETUP", xStaleDash);
+xSalesSh.getRange(1, xDateCol).setValue("date");
+check("...and works again once the header is right", xEnv.call("listSales", {}, XT, 1).success);
+
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
