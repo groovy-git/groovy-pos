@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ShoppingBag, AlertTriangle, Trophy, RefreshCw, ChevronRight } from "lucide-react";
-import { useApp } from "../store";
+import { useApp, takeLoginDashboard } from "../store";
 import { api } from "../lib/api";
 import { navigate } from "../lib/router";
 import { inr, fmtDate, istDate, METHOD_LABEL, plural, ROLE_LABEL } from "../lib/format";
@@ -26,7 +26,14 @@ export default function Home() {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await api("dashboard");
+      // right after logging in, the figures were already asked for alongside the shop's data
+      const early = takeLoginDashboard(branchId);
+      const r = early
+        ? await early.catch((e) => {
+            if (e.code === "AUTH_EXPIRED") throw e;
+            return api("dashboard"); // it failed — ask again, as Home always has
+          })
+        : await api("dashboard");
       setD(r.data);
       sessionStorage.setItem("gp_dash_" + branchId, JSON.stringify(r.data));
     } catch (e) {

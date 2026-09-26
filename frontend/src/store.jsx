@@ -35,6 +35,19 @@ const EMPTY_CART = { lines: [], bill_disc: 0, customer: { phone: "", name: "", g
 const cartKey = (branchId) => "gp_cart_" + (branchId || 0);
 const pickedKey = (userId) => "gp_branch_picked_" + userId;
 
+/**
+ * Home's figures, asked for while logging in instead of after the shop's data has arrived — the
+ * two used to run one after the other. Home's first load takes it, once. It counts only for the
+ * branch it was meant for: a request for no branch in particular (0) is placed by the server
+ * exactly as the login's bootstrap is, so it lands on whatever branch Home then opens with.
+ */
+let loginDashboard = null;
+export function takeLoginDashboard(branchId) {
+  const d = loginDashboard;
+  loginDashboard = null;
+  return d && (d.branch === 0 || d.branch === branchId) ? d.promise : null;
+}
+
 export function AppProvider({ children }) {
   const [user, setUser] = useState(() => (getToken() ? load("gp_user", null) : null));
   const [settings, setSettings] = useState(() => load("gp_settings", {}));
@@ -153,6 +166,7 @@ export function AppProvider({ children }) {
   }, [applyCatalog]);
 
   const logoutLocal = useCallback(() => {
+    loginDashboard = null; // never shown to the next person
     clearToken();
     clearBranch(); // the next person on this phone starts at their own home branch
     // shared phones: the next person must not see this person's data (costs, carts, figures, emails)
@@ -250,6 +264,9 @@ export function AppProvider({ children }) {
     async (email, password) => {
       const r = await api("login", { email, password, device: navigator.userAgent.slice(0, 100) });
       setToken(r.data.token);
+      const promise = api("dashboard");
+      promise.catch(() => {}); // a failure is Home's to deal with, when it takes this
+      loginDashboard = { branch: getBranch(), promise };
       setBooting(true); // "Loading your shop…" until products and settings arrive
       setUser(r.data.user);
       save("gp_user", r.data.user);
